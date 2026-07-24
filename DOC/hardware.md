@@ -13,9 +13,12 @@
 |--------|------|------------|
 | Botão A | **4** | Switch mecânico para GND |
 | Botão B | **5** | Switch mecânico para GND |
+| LED status | **8** | Azul onboard, **ativo em LOW** |
 | Comum | GND | Compartilhado |
 
-Constantes em `include/config.h` (`BTN_A_PIN`, `BTN_B_PIN`).
+Constantes em `include/config.h` (`BTN_A_PIN`, `BTN_B_PIN`, `STATUS_LED_PIN`).
+
+O LED acende após Wi‑Fi conectar (durante MQTT/discovery) e apaga antes do deep sleep.
 
 ### Esquema lógico
 

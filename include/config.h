@@ -17,6 +17,15 @@
 #define BTN_B_PIN 5
 #endif
 
+// LED azul onboard do ESP32-C3 Super Mini (GPIO8, ativo em LOW).
+#ifndef STATUS_LED_PIN
+#define STATUS_LED_PIN 8
+#endif
+
+#ifndef STATUS_LED_ACTIVE_LOW
+#define STATUS_LED_ACTIVE_LOW 1
+#endif
+
 // Janela (ms) para detectar ambos os botoes apos o wake
 #ifndef BUTTON_BOTH_WINDOW_MS
 #define BUTTON_BOTH_WINDOW_MS 80
@@ -77,7 +86,7 @@
 #endif
 
 #ifndef MQTT_POST_PUBLISH_MS
-#define MQTT_POST_PUBLISH_MS 800
+#define MQTT_POST_PUBLISH_MS 1500
 #endif
 
 // Namespace Preferences (NVS)

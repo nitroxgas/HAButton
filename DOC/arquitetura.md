@@ -42,14 +42,16 @@ As credenciais de Wi‑Fi ficam a cargo do WiFiManager (armazenamento próprio).
 
 ## MQTT / Home Assistant
 
-- **Discovery (retained) a cada wake** em:  
-  `{prefix}/device/{deviceId}/config`  
-  com `origin` + `device` + `components` (`event` para cada botão).  
-  Prefixo padrão: `homeassistant` — **obrigatório** para o HA criar o device.
-- **Evento (não retained)** em:  
+- **Discovery single-component (retained), a cada wake:**  
+  `homeassistant/event/{deviceId}_{btn}/config`  
+  Campos: `unique_id`, `state_topic`, `event_types`, `device` (identifiers + MAC), `origin`.
+- **Evento (não retained):**  
   `{device_name}/{mac}/{btn}/event` → `{"event_type":"press"}`  
-  Estes tópicos **ficam fora** de `homeassistant/` de propósito.
-- Legacy `binary_sensor/.../config` é limpo (payload vazio retained).
+  Fora do prefixo `homeassistant/` de propósito.
+- Broker precisa de ACL de escrita em `homeassistant/#`.
+
+Contadores temporais no HA: [homeassistant-contadores.md](homeassistant-contadores.md).
+Checklist de discovery: [configuracao.md](configuracao.md).
 
 ## Energia
 
