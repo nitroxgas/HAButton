@@ -1,5 +1,10 @@
 #pragma once
 
+// Defaults locais opcionais (gitignored). Deve vir ANTES dos #ifndef abaixo.
+#if __has_include("secrets.h")
+#include "secrets.h"
+#endif
+
 // ---------------------------------------------------------------------------
 // Hardware — ESP32-C3 Super Mini
 // Switches mecanicos para GND, INPUT_PULLUP, wake em nivel baixo.
@@ -25,7 +30,7 @@
 #endif
 
 #ifndef WIFI_CONNECT_TIMEOUT_S
-#define WIFI_CONNECT_TIMEOUT_S 25
+#define WIFI_CONNECT_TIMEOUT_S 50
 #endif
 
 #ifndef WIFI_PORTAL_TIMEOUT_S
@@ -72,7 +77,7 @@
 #endif
 
 #ifndef MQTT_POST_PUBLISH_MS
-#define MQTT_POST_PUBLISH_MS 400
+#define MQTT_POST_PUBLISH_MS 800
 #endif
 
 // Namespace Preferences (NVS)

@@ -43,7 +43,7 @@ bool configChanged(const AppConfig& before, const AppConfig& after) {
          before.btnAName != after.btnAName || before.btnBName != after.btnBName;
 }
 
-void saveToNvs(const AppConfig& cfg, bool resetDiscovery) {
+void saveToNvs(const AppConfig& cfg) {
   if (!prefs.begin(NVS_NAMESPACE, false)) {
     Serial.println("[wifi] falha ao abrir NVS para gravacao");
     return;
@@ -52,13 +52,16 @@ void saveToNvs(const AppConfig& cfg, bool resetDiscovery) {
   prefs.putString("mqtt_port", cfg.mqttPort);
   prefs.putString("mqtt_user", cfg.mqttUser);
   prefs.putString("mqtt_pass", cfg.mqttPass);
-  prefs.putString("mqtt_prefix", cfg.mqttPrefix);
+  // Nunca persistir prefixo vazio — discovery do HA exige o prefixo correto.
+  String prefix = cfg.mqttPrefix;
+  prefix.trim();
+  if (prefix.isEmpty()) {
+    prefix = DEFAULT_MQTT_PREFIX;
+  }
+  prefs.putString("mqtt_prefix", prefix);
   prefs.putString("device_name", cfg.deviceName);
   prefs.putString("btn_a_name", cfg.btnAName);
   prefs.putString("btn_b_name", cfg.btnBName);
-  if (resetDiscovery) {
-    prefs.putBool("disc_done", false);
-  }
   prefs.end();
 }
 
@@ -147,8 +150,14 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   cfg.btnAName = pBtnA.getValue();
   cfg.btnBName = pBtnB.getValue();
 
+  // Garante prefixo valido mesmo se o portal enviar string vazia.
+  cfg.mqttPrefix.trim();
+  if (cfg.mqttPrefix.isEmpty()) {
+    cfg.mqttPrefix = DEFAULT_MQTT_PREFIX;
+  }
+
   if (configChanged(cfgBefore, cfg)) {
-    saveToNvs(cfg, true);
+    saveToNvs(cfg);
   }
 
   if (!ok) {

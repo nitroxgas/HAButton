@@ -7,6 +7,7 @@
 | [arquitetura.md](arquitetura.md) | Fluxo de boot, módulos e deep sleep |
 | [hardware.md](hardware.md) | Pinout, ligações dos botões e bateria |
 | [configuracao.md](configuracao.md) | Portal WiFiManager, MQTT e Home Assistant |
+| [homeassistant-contadores.md](homeassistant-contadores.md) | Contagem de cliques (hora/dia/semana/mês) |
 | [desenvolvimento.md](desenvolvimento.md) | Build PlatformIO, estrutura e troubleshooting |
 
 ## Objetivo

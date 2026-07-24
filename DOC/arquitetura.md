@@ -22,7 +22,7 @@ flowchart TD
 | `src/main.cpp` | Orquestra boot → Wi‑Fi → MQTT → sleep |
 | `src/buttons.cpp` | Leitura dos pinos, janela “ambos”, deep sleep |
 | `src/wifi_setup.cpp` | WiFiManager, parâmetros customizados, NVS |
-| `src/mqtt_ha.cpp` | PubSubClient, discovery MQTT, pulso ON/OFF |
+| `src/mqtt_ha.cpp` | PubSubClient, device discovery + eventos MQTT |
 | `include/config.h` | Pinos, timeouts e defaults |
 
 ## Wake e botões
@@ -36,16 +36,20 @@ flowchart TD
 Namespace `habutton`:
 
 - Credenciais/parâmetros MQTT e nomes (`mqtt_host`, `mqtt_port`, …).
-- Flag `disc_done`: evita republicar discovery retained a cada wake (reseta se a config MQTT mudar).
+- Prefixo de discovery vazio é rejeitado e volta para `homeassistant`.
 
 As credenciais de Wi‑Fi ficam a cargo do WiFiManager (armazenamento próprio).
 
 ## MQTT / Home Assistant
 
-- Discovery retained em `{mqtt_prefix}/binary_sensor/{deviceId}_{btn}/config`.
-- Estado em `{device_name}/{mac}/{btn}/state` com pulso `ON` → `OFF`.
-- Sem tópico de availability: o deep sleep não deve marcar a entidade como *unavailable* entre presses.
-- `expire_after` / `off_delay` no discovery ajudam o HA a tratar o evento como momentâneo.
+- **Discovery (retained) a cada wake** em:  
+  `{prefix}/device/{deviceId}/config`  
+  com `origin` + `device` + `components` (`event` para cada botão).  
+  Prefixo padrão: `homeassistant` — **obrigatório** para o HA criar o device.
+- **Evento (não retained)** em:  
+  `{device_name}/{mac}/{btn}/event` → `{"event_type":"press"}`  
+  Estes tópicos **ficam fora** de `homeassistant/` de propósito.
+- Legacy `binary_sensor/.../config` é limpo (payload vazio retained).
 
 ## Energia
 
