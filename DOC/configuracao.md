@@ -1,78 +1,68 @@
 # Configuração MQTT / Home Assistant
 
-## Onde estão os contadores temporais?
+## Contadores temporais
 
-Guia completo (hora / dia / semana / mês):
+**[homeassistant-contadores.md](homeassistant-contadores.md)**
 
-**[DOC/homeassistant-contadores.md](homeassistant-contadores.md)**
+## Sessão acordada e sleep
 
-Índice geral: [DOC/README.md](README.md).
+Após conectar, o device fica **acordado** (default **20 s** de idle).
 
----
+- Cada gesto publicado **reinicia** o timer.
+- Campo portal: **Sleep delay ms (idle / OTA)** — default `20000`.
 
-## Dois tipos de tópico (não confundir)
+## Tópicos
 
-| Tipo | Tópico (exemplo) | Retained | Função |
-|------|------------------|----------|--------|
-| **Discovery** | `homeassistant/event/habutton_<mac>_btn_a/config` | **sim** | Cria device + entidades no HA |
-| **Evento** | `habutton/<mac>/btn_a/event` | **não** | Dispara o clique (`{"event_type":"press"}`) |
+| Tipo | Exemplo | Retained |
+|------|---------|----------|
+| Discovery | `homeassistant/event/habutton_<mac>/config` | sim |
+| Evento | `habutton/<mac>/event` | não |
 
-Ver só `habutton/...` no broker **não** cria entidades.  
-É preciso existir o retained sob `homeassistant/event/.../config`.
+Payload: `{"event_type":"press_a"}` (ou `long_b`, `press_ab`, `press_abc`, etc.).
 
-## Requisitos oficiais atendidos pelo firmware (v1.2)
+### event_types
 
-Fonte: [MQTT Discovery](https://www.home-assistant.io/integrations/mqtt/#mqtt-discovery) e [MQTT Event](https://www.home-assistant.io/integrations/event.mqtt/).
+`press_a`, `press_b`, `press_c`, `long_a`, `long_b`, `long_c`,  
+`press_ab`, `press_ac`, `press_bc`, `press_abc`,  
+`long_ab`, `long_ac`, `long_bc`, `long_abc`
 
-### Discovery (single-component)
-
-1. Tópico: `<prefix>/event/<object_id>/config` com `object_id` ∈ `[a-zA-Z0-9_-]`
-2. Payload JSON **retained**
-3. Campos obrigatórios / necessários:
-   - `state_topic`
-   - `event_types` (lista; usamos `press`)
-   - `unique_id` (para device registry)
-   - `device.identifiers` **ou** `device.connections` (usamos os dois + MAC)
-4. Recomendados: `name`, `device_class: button`, `origin`, `qos`
-5. Prefixo canônico sempre publicado: **`homeassistant`** (independente de erro no portal)
-
-### Evento de clique
-
-- Payload: `{"event_type":"press"}` (JSON)
-- **Não** retained (HA ignora retained em `event`)
-
-### Home Assistant
-
-- Integração MQTT com **Enable discovery** = on  
-- Discovery prefix = `homeassistant` (padrão)  
-- HA ≥ **2023.8** (entidade `event`)  
-- Usuário MQTT com **ACL de WRITE** em `homeassistant/#`  
-  (em brokers externos isso costuma ser a causa: estado em `habutton/#` ok, discovery bloqueado)
-
-## Checklist se as entidades não aparecem
-
-1. MQTT Explorer → existe retained em  
-   `homeassistant/event/habutton_<mac>_btn_a/config` e `..._btn_b/config`?
-2. Serial do ESP mostra `RETAIN homeassistant/event/... -> ok`?  
-   Se `FAIL` → ACL/credencial/broker.
-3. Em **Configurações → Dispositivos e serviços → MQTT** → devices descobertos / log.
-4. Em **Configurações → Sistema → Logs**, filtro `mqtt`, nível debug se preciso.
-5. `pio run -t upload`, pressione o botão (cada wake republica discovery).
-
-Entidades esperadas (exemplo):
-
-- Device: `habutton` (manufacturer HAButton)
-- `event.habutton_btn_a` / `event.habutton_btn_b`
+Uma única entidade `event` no device HA.
 
 ## Portal WiFiManager
 
-| Campo | Default | Nota |
-|-------|---------|------|
-| MQTT Host / Port / User / Pass | ver `config.h` / `secrets.h` | Broker |
-| HA Discovery Prefix | `homeassistant` | Discovery **sempre** também em `homeassistant`; custom só se o HA usar outro prefixo |
-| Device / Botão nomes | `habutton`, `Botao A/B` | Nomes amigáveis |
+| Campo | Default |
+|-------|---------|
+| MQTT Host/Port/User/Pass | ver `config.h` / `secrets.h` |
+| HA Discovery Prefix | `homeassistant` (discovery sempre também em `homeassistant`) |
+| Device / Botões A/B/C | `habutton`, nomes amigáveis |
+| Sleep delay ms | `20000` |
+| OTA Password | `habutton-ota` |
 
-## Contadores
+### Reabrir o portal
 
-Depois que `event.*` existir → siga **[homeassistant-contadores.md](homeassistant-contadores.md)**  
-(Counter → Template `total_increasing` → Utility Meter hourly/daily/weekly/monthly).
+Segure **A+B+C ~10 s** → AP `HAButton-XXXX` → `http://192.168.4.1`.
+
+## Discovery / ACL
+
+Broker precisa de WRITE em `homeassistant/#`.  
+Serial: `VERIFY ... -> ok`. Fallback YAML: [homeassistant-fallback-yaml.md](homeassistant-fallback-yaml.md).
+
+## Home Assistant — o que esperar
+
+O firmware publica **uma** entidade MQTT Event (`event.habutton_…_event`), não dois botões.
+
+- Domínio **Event** (desde HA **2023.8**). Não precisa de YAML se o discovery funcionar.
+- A entidade é **sem estado contínuo**: o “estado” vira um **timestamp** a cada gesto; o tipo fica em **atributos → `event_type`** (`press_a`, `long_b`, …).
+- Versões antigas do firmware criavam **2 entidades** (`…_btn_a` / `…_btn_b`) em tópicos diferentes. O firmware **1.3.1+** limpa esses discovery retained e republica o schema novo.
+
+### Se ainda vir 2 botões sem atualizar
+
+1. Flash **1.3.1+** e acorde o device (gesto) — no serial deve aparecer `discovery schema=3` e `CLEAR …/btn_a/config`.
+2. Em **Dispositivos e serviços → MQTT → habutton**: remova entidades órfãs `btn_a` / `btn_b` se sobrarem.
+3. Confirme em **Ferramentas de desenvolvedor → Estados** a entidade `event.…` e o atributo `event_type` após um clique.
+4. No MQTT Explorer: tópico `habutton/<mac>/event` com `{"event_type":"press_a"}` (não retained).
+
+## OTA
+
+Guia completo: **[ota.md](ota.md)**.  
+Durante a sessão acordada (e a cada clique que estende o idle) o `ArduinoOTA` fica ativo na LAN.

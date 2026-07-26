@@ -2,6 +2,7 @@
 #include "config.h"
 
 #include <ArduinoJson.h>
+#include <Preferences.h>
 #include <PubSubClient.h>
 #include <WiFi.h>
 
@@ -10,9 +11,16 @@ namespace {
 WiFiClient wifiClient;
 PubSubClient mqtt(wifiClient);
 
-constexpr const char* kFwVersion = "1.2.0";
-// Prefixo padrao do HA — discovery SO funciona se o broker permitir publish aqui.
 constexpr const char* kHaDiscoveryPrefix = "homeassistant";
+
+volatile bool g_echoOk = false;
+String g_echoTopic;
+
+const char* kEventTypes[] = {
+    "press_a",  "press_b",  "press_c",  "long_a",   "long_b",   "long_c",
+    "press_ab", "press_ac", "press_bc", "press_abc",
+    "long_ab",  "long_ac",  "long_bc",  "long_abc",
+};
 
 String macSuffix() {
   uint8_t mac[6];
@@ -36,48 +44,19 @@ String deviceId(const AppConfig& cfg) {
   return cfg.deviceName + "_" + macSuffix();
 }
 
-String stateTopic(const AppConfig& cfg, const char* btnKey) {
-  return cfg.deviceName + "/" + macSuffix() + "/" + btnKey + "/event";
+String stateTopic(const AppConfig& cfg) {
+  return cfg.deviceName + "/" + macSuffix() + "/event";
 }
 
-String eventDiscoveryTopic(const char* prefix, const AppConfig& cfg, const char* btnKey) {
-  // Formato oficial single-component:
-  // <discovery_prefix>/event/<object_id>/config
-  // object_id == unique_id (best practice HA)
-  return String(prefix) + "/event/" + deviceId(cfg) + "_" + btnKey + "/config";
+String eventDiscoveryTopic(const AppConfig& cfg) {
+  return String(kHaDiscoveryPrefix) + "/event/" + deviceId(cfg) + "/config";
 }
 
-bool mqttConnect(const AppConfig& cfg) {
-  const int port = cfg.mqttPort.toInt() > 0 ? cfg.mqttPort.toInt() : 1883;
-  mqtt.setServer(cfg.mqttHost.c_str(), port);
-  mqtt.setBufferSize(2048);
-  mqtt.setKeepAlive(30);
-
-  const String clientId = deviceId(cfg);
-  const uint32_t deadline = millis() + MQTT_CONNECT_TIMEOUT_MS;
-
-  while (!mqtt.connected() && millis() < deadline) {
-    Serial.printf("[mqtt] conectando em %s:%d como %s\n",
-                  cfg.mqttHost.c_str(), port, clientId.c_str());
-
-    bool connected = false;
-    if (cfg.mqttUser.length() > 0) {
-      connected = mqtt.connect(clientId.c_str(),
-                               cfg.mqttUser.c_str(),
-                               cfg.mqttPass.c_str());
-    } else {
-      connected = mqtt.connect(clientId.c_str());
-    }
-
-    if (connected) {
-      Serial.println("[mqtt] conectado");
-      return true;
-    }
-
-    Serial.printf("[mqtt] falha rc=%d — verifique user/senha/ACL do broker\n", mqtt.state());
-    delay(400);
+void mqttCallback(char* topic, byte* payload, unsigned int length) {
+  (void)payload;
+  if (g_echoTopic.length() > 0 && g_echoTopic.equals(topic) && length > 0) {
+    g_echoOk = true;
   }
-  return false;
 }
 
 bool publishRetained(const String& topic, const char* payload, size_t len) {
@@ -86,37 +65,93 @@ bool publishRetained(const String& topic, const char* payload, size_t len) {
   Serial.printf("[mqtt] RETAIN %s (%u B) -> %s\n", topic.c_str(),
                 static_cast<unsigned>(len), ok ? "ok" : "FAIL");
   mqtt.loop();
-  delay(80);
+  delay(40);
   return ok;
 }
 
-// Single-component discovery (compativel com HA desde o suporte a MQTT Event ~2023.8).
-// Requisitos HA:
-// - topico: <prefix>/event/<object_id>/config  (object_id: [a-zA-Z0-9_-])
-// - payload JSON retained
-// - unique_id (obrigatorio para device registry)
-// - state_topic
-// - event_types (obrigatorio para event)
-// - device.identifiers ou device.connections (para agrupar no device)
-// - origin recomendado
-bool publishEventDiscovery(const AppConfig& cfg,
-                           const char* prefix,
-                           const char* btnKey,
-                           const String& friendlyName) {
-  JsonDocument doc;
-  const String uid = deviceId(cfg) + "_" + btnKey;
+bool publishEmptyRetained(const String& topic) {
+  // Payload vazio + retain remove discovery antigo no HA.
+  const bool ok = mqtt.publish(topic.c_str(), reinterpret_cast<const uint8_t*>(""), 0, true);
+  Serial.printf("[mqtt] CLEAR %s -> %s\n", topic.c_str(), ok ? "ok" : "FAIL");
+  mqtt.loop();
+  delay(20);
+  return ok;
+}
 
-  doc["name"] = friendlyName;
-  doc["unique_id"] = uid;
-  doc["object_id"] = cfg.deviceName + "_" + btnKey;
-  doc["state_topic"] = stateTopic(cfg, btnKey);
-  doc["event_types"][0] = "press";
+bool verifyRetained(const String& topic) {
+  g_echoOk = false;
+  g_echoTopic = topic;
+  if (!mqtt.subscribe(topic.c_str(), 0)) {
+    g_echoTopic = "";
+    return false;
+  }
+  const uint32_t deadline = millis() + 1500;
+  while (millis() < deadline && !g_echoOk) {
+    mqtt.loop();
+    delay(10);
+  }
+  mqtt.unsubscribe(topic.c_str());
+  mqtt.loop();
+  g_echoTopic = "";
+  Serial.printf("[mqtt] VERIFY %s -> %s\n", topic.c_str(), g_echoOk ? "ok" : "FAIL");
+  return g_echoOk;
+}
+
+uint8_t storedDiscoveryVersion() {
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, true)) {
+    return 0;
+  }
+  const uint8_t ver = prefs.getUChar("disc_ver", 0);
+  prefs.end();
+  return ver;
+}
+
+void markDiscoveryDone(uint8_t ver) {
+  Preferences prefs;
+  if (!prefs.begin(NVS_NAMESPACE, false)) {
+    return;
+  }
+  prefs.putUChar("disc_ver", ver);
+  prefs.putBool("disc_done", true);
+  prefs.end();
+}
+
+void clearLegacyUnderPrefix(const String& prefix, const String& id) {
+  publishEmptyRetained(prefix + "/binary_sensor/" + id + "_btn_a/config");
+  publishEmptyRetained(prefix + "/binary_sensor/" + id + "_btn_b/config");
+  publishEmptyRetained(prefix + "/event/" + id + "_btn_a/config");
+  publishEmptyRetained(prefix + "/event/" + id + "_btn_b/config");
+}
+
+void clearLegacyDiscovery(const AppConfig& cfg) {
+  const String id = deviceId(cfg);
+  clearLegacyUnderPrefix(kHaDiscoveryPrefix, id);
+
+  String custom = cfg.mqttPrefix;
+  custom.trim();
+  if (custom.length() > 0 && custom != kHaDiscoveryPrefix) {
+    clearLegacyUnderPrefix(custom, id);
+  }
+}
+
+bool publishDiscovery(const AppConfig& cfg) {
+  clearLegacyDiscovery(cfg);
+
+  JsonDocument doc;
+  doc["name"] = cfg.deviceName;
+  doc["unique_id"] = deviceId(cfg) + "_event";
+  doc["state_topic"] = stateTopic(cfg);
   doc["device_class"] = "button";
-  doc["qos"] = 0;
+
+  JsonArray types = doc["event_types"].to<JsonArray>();
+  for (const char* t : kEventTypes) {
+    types.add(t);
+  }
 
   JsonObject origin = doc["origin"].to<JsonObject>();
   origin["name"] = "HAButton";
-  origin["sw"] = kFwVersion;
+  origin["sw"] = FW_VERSION;
 
   JsonObject device = doc["device"].to<JsonObject>();
   device["identifiers"][0] = deviceId(cfg);
@@ -125,91 +160,104 @@ bool publishEventDiscovery(const AppConfig& cfg,
   device["name"] = cfg.deviceName;
   device["model"] = "ESP32-C3 Super Mini";
   device["manufacturer"] = "HAButton";
-  device["sw_version"] = kFwVersion;
-  device["serial_number"] = macSuffix();
+  device["sw_version"] = FW_VERSION;
 
   char payload[1024];
   const size_t n = serializeJson(doc, payload, sizeof(payload));
   if (n == 0 || n >= sizeof(payload)) {
-    Serial.printf("[mqtt] discovery JSON overflow n=%u\n", static_cast<unsigned>(n));
+    Serial.println("[mqtt] discovery JSON overflow");
     return false;
   }
 
   Serial.printf("[mqtt] discovery payload=%s\n", payload);
-  return publishRetained(eventDiscoveryTopic(prefix, cfg, btnKey), payload, n);
+  const String topic = eventDiscoveryTopic(cfg);
+  if (!publishRetained(topic, payload, n)) {
+    return false;
+  }
+  if (verifyRetained(topic)) {
+    markDiscoveryDone(DISCOVERY_SCHEMA_VERSION);
+    return true;
+  }
+  Serial.println("[mqtt] discovery nao confirmado (ACL homeassistant/#?)");
+  return false;
 }
 
-bool publishAllDiscovery(const AppConfig& cfg) {
-  // Sempre publica no prefixo canonico do HA.
-  bool ok = true;
-  ok = publishEventDiscovery(cfg, kHaDiscoveryPrefix, "btn_a", cfg.btnAName) && ok;
-  ok = publishEventDiscovery(cfg, kHaDiscoveryPrefix, "btn_b", cfg.btnBName) && ok;
-
-  // Se o portal tiver outro prefixo (HA customizado), publica la tambem.
-  String custom = cfg.mqttPrefix;
-  custom.trim();
-  while (custom.endsWith("/")) {
-    custom.remove(custom.length() - 1);
-  }
-  if (custom.length() > 0 && custom != kHaDiscoveryPrefix) {
-    Serial.printf("[mqtt] prefixo custom do portal=%s (tambem publicando)\n", custom.c_str());
-    ok = publishEventDiscovery(cfg, custom.c_str(), "btn_a", cfg.btnAName) && ok;
-    ok = publishEventDiscovery(cfg, custom.c_str(), "btn_b", cfg.btnBName) && ok;
-  }
-
-  return ok;
-}
-
-void publishPress(const AppConfig& cfg, const char* btnKey) {
-  const String topic = stateTopic(cfg, btnKey);
-  // Nao retained: HA descarta retained em entidades event.
-  const char* payload = "{\"event_type\":\"press\"}";
-  const bool ok = mqtt.publish(topic.c_str(), payload, false);
-  Serial.printf("[mqtt] EVENT %s %s -> %s\n", topic.c_str(), payload, ok ? "ok" : "FAIL");
-  mqtt.loop();
-  delay(50);
+bool discoveryNeedsPublish() {
+  return storedDiscoveryVersion() != DISCOVERY_SCHEMA_VERSION;
 }
 
 }  // namespace
 
-bool mqttPublishButtonEvent(const AppConfig& cfg, const ButtonState& buttons) {
-  if (!mqttConnect(cfg)) {
-    Serial.println("[mqtt] nao conectou");
+bool mqttEnsureConnected(const AppConfig& cfg) {
+  if (mqtt.connected()) {
+    mqtt.loop();
+    return true;
+  }
+
+  const int port = cfg.mqttPort.toInt() > 0 ? cfg.mqttPort.toInt() : 1883;
+  mqtt.setServer(cfg.mqttHost.c_str(), port);
+  mqtt.setBufferSize(2048);
+  mqtt.setKeepAlive(30);
+  mqtt.setCallback(mqttCallback);
+
+  const String clientId = deviceId(cfg);
+  const uint32_t deadline = millis() + MQTT_CONNECT_TIMEOUT_MS;
+
+  while (!mqtt.connected() && millis() < deadline) {
+    Serial.printf("[mqtt] conectando %s:%d\n", cfg.mqttHost.c_str(), port);
+    bool ok = false;
+    if (cfg.mqttUser.length() > 0) {
+      ok = mqtt.connect(clientId.c_str(), cfg.mqttUser.c_str(), cfg.mqttPass.c_str());
+    } else {
+      ok = mqtt.connect(clientId.c_str());
+    }
+    if (ok) {
+      Serial.println("[mqtt] conectado");
+      break;
+    }
+    Serial.printf("[mqtt] falha rc=%d\n", mqtt.state());
+    delay(300);
+  }
+
+  if (!mqtt.connected()) {
     return false;
   }
 
-  Serial.println("[mqtt] === HA discovery requirements ===");
-  Serial.printf("[mqtt] MUST retain: %s/event/<unique_id>/config\n", kHaDiscoveryPrefix);
-  Serial.printf("[mqtt] state/event topics (fora do prefixo): %s/%s/btn_*/event\n",
-                cfg.deviceName.c_str(), macSuffix().c_str());
-  Serial.println("[mqtt] Broker ACL precisa permitir WRITE em homeassistant/#");
+  if (discoveryNeedsPublish()) {
+    Serial.printf("[mqtt] discovery schema=%u — republicando\n",
+                  static_cast<unsigned>(DISCOVERY_SCHEMA_VERSION));
+    publishDiscovery(cfg);
+  }
+  return true;
+}
 
-  const bool discOk = publishAllDiscovery(cfg);
-  if (!discOk) {
-    Serial.println("[mqtt] AVISO: discovery FAIL — confira ACL/topic no MQTT Explorer");
+bool mqttPublishGesture(const AppConfig& cfg, const char* eventType) {
+  if (eventType == nullptr || eventType[0] == '\0') {
+    return false;
+  }
+  if (!mqttEnsureConnected(cfg)) {
+    Serial.println("[mqtt] publish abortado — sem conexao");
+    return false;
   }
 
-  // Pequena pausa para o HA processar discovery antes do evento.
-  delay(200);
+  JsonDocument doc;
+  doc["event_type"] = eventType;
+  char payload[64];
+  const size_t n = serializeJson(doc, payload, sizeof(payload));
+  if (n == 0 || n >= sizeof(payload)) {
+    return false;
+  }
+
+  const String topic = stateTopic(cfg);
+  const bool ok = mqtt.publish(topic.c_str(), payload, false);
+  Serial.printf("[mqtt] EVENT %s %s -> %s\n", topic.c_str(), payload, ok ? "ok" : "FAIL");
   mqtt.loop();
+  delay(30);
+  return ok;
+}
 
-  if (!buttons.a && !buttons.b) {
-    Serial.println("[mqtt] sem clique; so discovery");
-  } else {
-    if (buttons.a) {
-      publishPress(cfg, "btn_a");
-    }
-    if (buttons.b) {
-      publishPress(cfg, "btn_b");
-    }
+void mqttDisconnect() {
+  if (mqtt.connected()) {
+    mqtt.disconnect();
   }
-
-  const uint32_t until = millis() + MQTT_POST_PUBLISH_MS;
-  while (millis() < until) {
-    mqtt.loop();
-    delay(10);
-  }
-
-  mqtt.disconnect();
-  return discOk;
 }

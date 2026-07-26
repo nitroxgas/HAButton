@@ -1,60 +1,45 @@
 # Arquitetura
 
-## Visão geral
-
-O firmware executa um ciclo único em `setup()` e não permanece em `loop()`: após Wi‑Fi + MQTT, entra em deep sleep até o próximo acionamento.
+## Fluxo
 
 ```mermaid
 flowchart TD
-  boot[Boot ESP32-C3] --> wakeReason[Ler causa do wake]
-  wakeReason --> readBtns[Ler GPIO botao A/B]
-  readBtns --> wifi[WiFiManager connect ou portal]
-  wifi --> mqtt[Conectar MQTT]
-  mqtt --> discover[Publicar discovery HA se necessario]
-  discover --> publish[Publicar acionamento]
-  publish --> sleep[Wake GPIO + deep sleep]
+  wake[Wake GPIO A/B/C] --> wifi[WiFiManager]
+  wifi --> session[Sessao acordada]
+  session --> poll[Poll gestos + OTA]
+  poll -->|gesto| effect[GPIO7 HIGH ~2.5V]
+  effect --> mqtt[Publish event_type]
+  mqtt --> hold[Hold >= 0.5s]
+  hold --> off[GPIO7 = 0V]
+  off --> reset[Reset idle timer]
+  reset --> poll
+  poll -->|A+B+C 10s| portal[force_portal + restart]
+  poll -->|idle esgotado| sleep[Deep sleep]
 ```
 
 ## Módulos
 
-| Arquivo | Responsabilidade |
-|---------|------------------|
-| `src/main.cpp` | Orquestra boot → Wi‑Fi → MQTT → sleep |
-| `src/buttons.cpp` | Leitura dos pinos, janela “ambos”, deep sleep |
-| `src/wifi_setup.cpp` | WiFiManager, parâmetros customizados, NVS |
-| `src/mqtt_ha.cpp` | PubSubClient, device discovery + eventos MQTT |
-| `include/config.h` | Pinos, timeouts e defaults |
+| Arquivo | Função |
+|---------|--------|
+| `src/main.cpp` | Sessão acordada, idle timer, orquestra OTA/MQTT/efeito |
+| `src/buttons.cpp` | Poll de gestos A/B/C + config chord |
+| `src/wifi_setup.cpp` | WiFiManager, NVS, force_portal |
+| `src/mqtt_ha.cpp` | Discovery + publish `event` |
+| `src/ota_update.cpp` | ArduinoOTA |
+| `src/effect_out.cpp` | PWM GPIO7 on/off ~2,5 V (hold ≥0,5 s) |
+| `src/status_led.cpp` | LED onboard GPIO8 |
 
-## Wake e botões
+## Persistência NVS (`habutton`)
 
-- Causa `ESP_SLEEP_WAKEUP_GPIO`: leitura imediata de GPIO4/GPIO5 (ativo em nível baixo).
-- Janela de ~80 ms (`BUTTON_BOTH_WINDOW_MS`) para detectar o segundo botão em acionamento próximo.
-- Antes de dormir: espera soltar os botões (até ~3 s) para evitar wake em laço.
+MQTT, nomes, `sleep_delay`, `ota_pass`, `force_portal`, `disc_done`.
 
-## Persistência (NVS)
+## MQTT
 
-Namespace `habutton`:
+- Discovery: `homeassistant/event/{deviceId}/config` (retained).
+- Estado: `{device}/{mac}/event` com `{"event_type":"..."}`.
+- Conexão mantida durante a sessão; discovery republicado se config mudar.
 
-- Credenciais/parâmetros MQTT e nomes (`mqtt_host`, `mqtt_port`, …).
-- Prefixo de discovery vazio é rejeitado e volta para `homeassistant`.
+## Energia / efeito
 
-As credenciais de Wi‑Fi ficam a cargo do WiFiManager (armazenamento próprio).
-
-## MQTT / Home Assistant
-
-- **Discovery single-component (retained), a cada wake:**  
-  `homeassistant/event/{deviceId}_{btn}/config`  
-  Campos: `unique_id`, `state_topic`, `event_types`, `device` (identifiers + MAC), `origin`.
-- **Evento (não retained):**  
-  `{device_name}/{mac}/{btn}/event` → `{"event_type":"press"}`  
-  Fora do prefixo `homeassistant/` de propósito.
-- Broker precisa de ACL de escrita em `homeassistant/#`.
-
-Contadores temporais no HA: [homeassistant-contadores.md](homeassistant-contadores.md).
-Checklist de discovery: [configuracao.md](configuracao.md).
-
-## Energia
-
-- Após publicar: `WiFi.disconnect` + `WIFI_OFF` + `esp_deep_sleep_start()`.
-- Wake configurado com máscara GPIO4|GPIO5, nível baixo (`ESP_GPIO_WAKEUP_GPIO_LOW`).
-- Em falha de Wi‑Fi após timeout do portal (~90 s): dorme para preservar bateria.
+- Efeito só durante publish MQTT.
+- Deep sleep após idle; wake GPIO4|5|3 nível baixo (só GPIO0–5 no C3).

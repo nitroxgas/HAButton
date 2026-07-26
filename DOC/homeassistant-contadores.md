@@ -1,164 +1,71 @@
 # Contadores de cliques no Home Assistant
 
-## Por que não usar só `binary_sensor`?
+Com a entidade única `event` do HAButton, conte por `event_type`.
 
-| Abordagem | Adequação a “botão físico” | Contagem |
-|-----------|----------------------------|----------|
-| `binary_sensor` ON/OFF | Ruim (estado artificial) | Possível via `history_stats`, frágil |
-| `event` (MQTT) | **Ideal** — clique é um evento | Automação → Counter → Utility Meter |
-| `device_automation` trigger | Bom para automações do device | Menos direto para estatísticas |
-
-O firmware publica entidades **`event`** com `event_type: press`.  
-A contagem (hora/dia/semana/mês) fica no Home Assistant, não no ESP (economiza bateria e flash).
-
-## Visão da estrutura
+## Fluxo
 
 ```mermaid
 flowchart LR
-  esp[ESP publica event press] --> evt[event.habutton_btn_a]
-  evt --> auto[Automacao incrementa]
-  auto --> ctr[counter.habutton_btn_a]
+  esp[ESP event_type] --> evt[event.habutton]
+  evt --> auto[Automacao]
+  auto --> ctr[counter]
   ctr --> tpl[sensor total_increasing]
-  tpl --> umH[utility_meter hora]
-  tpl --> umD[utility_meter dia]
-  tpl --> umW[utility_meter semana]
-  tpl --> umM[utility_meter mes]
+  tpl --> um[utility_meter hora/dia/semana/mes]
 ```
 
-## 1) Helpers Counter (UI)
+## 1) Counter (exemplo: press_a)
 
-Em **Configurações → Dispositivos e serviços → Ajudantes → Criar ajudante → Contador**:
+Helper → Contador → `counter.habutton_press_a`.
 
-| Helper | Entity ID sugerido |
-|--------|--------------------|
-| HAButton A total | `counter.habutton_btn_a` |
-| HAButton B total | `counter.habutton_btn_b` |
-
-Passo mínimo 1; valor inicial 0.
-
-## 2) Automações (incremento)
-
-Exemplo para o botão A (`configuration.yaml` ou UI):
+## 2) Automação
 
 ```yaml
 automation:
-  - id: habutton_btn_a_count
-    alias: "HAButton A — contar clique"
+  - id: habutton_count_press_a
+    alias: "HAButton contar press_a"
     mode: queued
     trigger:
       - platform: state
-        entity_id: event.habutton_btn_a
+        entity_id: event.habutton
     condition:
       - condition: template
-        value_template: "{{ trigger.to_state.attributes.event_type == 'press' }}"
+        value_template: "{{ trigger.to_state.attributes.event_type == 'press_a' }}"
     action:
       - action: counter.increment
         target:
-          entity_id: counter.habutton_btn_a
-
-  - id: habutton_btn_b_count
-    alias: "HAButton B — contar clique"
-    mode: queued
-    trigger:
-      - platform: state
-        entity_id: event.habutton_btn_b
-    condition:
-      - condition: template
-        value_template: "{{ trigger.to_state.attributes.event_type == 'press' }}"
-    action:
-      - action: counter.increment
-        target:
-          entity_id: counter.habutton_btn_b
+          entity_id: counter.habutton_press_a
 ```
 
-> Tip: na UI, trigger **Estado** da entidade `event.*`; condição template como acima; ação **Counter: Increment**.
+Repita para `press_b`, `long_a`, `press_ab`, etc., conforme necessário.
 
-## 3) Sensor espelho com `state_class: total_increasing`
+> O `entity_id` real pode variar (`event.habutton_<mac>_event`). Confira em **Entidades**.
 
-O `utility_meter` funciona melhor com um sensor numérico crescente. Crie um Template Sensor (UI **Ajudante → Modelo** ou YAML):
+## 3) Template + Utility Meter
 
 ```yaml
 template:
   - sensor:
-      - name: "HAButton A cliques total"
-        unique_id: habutton_btn_a_clicks_total
-        state: "{{ states('counter.habutton_btn_a') | int(0) }}"
+      - name: "HAButton press_a total"
+        unique_id: habutton_press_a_total
+        state: "{{ states('counter.habutton_press_a') | int(0) }}"
         state_class: total_increasing
         unit_of_measurement: "cliques"
-        icon: mdi:gesture-tap-button
 
-      - name: "HAButton B cliques total"
-        unique_id: habutton_btn_b_clicks_total
-        state: "{{ states('counter.habutton_btn_b') | int(0) }}"
-        state_class: total_increasing
-        unit_of_measurement: "cliques"
-        icon: mdi:gesture-tap-button
-```
-
-## 4) Utility Meter — hora, dia, semana, mês
-
-Via UI: **Ajudantes → Medidor de utilidade**, fonte = `sensor.habutton_a_cliques_total` (nome gerado), ciclos:
-
-| Ciclo | Reset |
-|-------|-------|
-| Hourly | a cada hora |
-| Daily | meia-noite |
-| Weekly | início da semana |
-| Monthly | início do mês |
-
-YAML equivalente (botão A; repita para B):
-
-```yaml
 utility_meter:
-  habutton_btn_a_hourly:
-    source: sensor.habutton_a_cliques_total
-    name: "HAButton A — hora"
+  habutton_press_a_hourly:
+    source: sensor.habutton_press_a_total
     cycle: hourly
-
-  habutton_btn_a_daily:
-    source: sensor.habutton_a_cliques_total
-    name: "HAButton A — dia"
+  habutton_press_a_daily:
+    source: sensor.habutton_press_a_total
     cycle: daily
-
-  habutton_btn_a_weekly:
-    source: sensor.habutton_a_cliques_total
-    name: "HAButton A — semana"
+  habutton_press_a_weekly:
+    source: sensor.habutton_press_a_total
     cycle: weekly
-
-  habutton_btn_a_monthly:
-    source: sensor.habutton_a_cliques_total
-    name: "HAButton A — mes"
+  habutton_press_a_monthly:
+    source: sensor.habutton_press_a_total
     cycle: monthly
 ```
 
-Ajuste `source` para o `entity_id` real do template sensor (HA pode slugificar o nome).
+## event_types disponíveis
 
-## Alternativa: History Stats (sem Counter)
-
-Se preferir estatística só pelo histórico do `event`/`binary_sensor`:
-
-```yaml
-sensor:
-  - platform: history_stats
-    name: "HAButton A presses hoje"
-    entity_id: event.habutton_btn_a
-    state: "press"
-    type: count
-    start: "{{ today_at('00:00') }}"
-    end: "{{ now() }}"
-```
-
-Para `event`, o estado principal é um **timestamp**; o tipo fica no atributo `event_type`. Por isso a rota **Counter + Utility Meter** é mais previsível.
-
-## Dashboard rápido
-
-- Entidade `event.*` — último clique  
-- `counter.*` — total absoluto  
-- `sensor.*_hora/_dia/_semana/_mes` — períodos  
-
-## Verificação
-
-1. Pressione o botão físico.  
-2. `event.habutton_btn_a` deve atualizar o horário do último evento.  
-3. O counter sobe +1.  
-4. Os utility meters refletem o incremento no ciclo atual.
+`press_a/b/c`, `long_a/b/c`, `press_ab/ac/bc/abc`, `long_ab/ac/bc/abc`.

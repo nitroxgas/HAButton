@@ -11,11 +11,13 @@ struct AppConfig {
   String deviceName;
   String btnAName;
   String btnBName;
+  String btnCName;
+  String sleepDelayMs;
+  String otaPass;
+
+  uint32_t sleepDelayMsValue() const;
 };
 
-// Carrega config do NVS (ou defaults) e conecta Wi-Fi / abre portal se preciso.
-// Retorna true se Wi-Fi ficou conectado.
 bool wifiSetupAndConnect(AppConfig& cfg);
-
-// Apenas carrega a config do NVS sem tentar conectar.
 void wifiLoadConfig(AppConfig& cfg);
+void wifiRequestConfigPortalOnNextBoot();

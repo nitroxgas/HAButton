@@ -1,15 +1,18 @@
 #pragma once
 
-#include <stdint.h>
-
-struct ButtonState {
-  bool a;
-  bool b;
-  bool fromGpioWake;
+struct GestureResult {
+  bool hasEvent;
+  bool isConfigChord;
+  bool pressStarted;  // true no instante em que um botao passa a ser pressionado
+  const char* eventType;
 };
 
-// Configura pinos e le o estado apos o boot (inclui janela para "ambos").
-ButtonState buttonsReadOnBoot();
+void buttonsBegin();
 
-// Prepara wake por GPIO (nivel baixo) e entra em deep sleep.
+// Algum botao A/B/C em nivel baixo (pressionado).
+bool buttonsAnyDown();
+
+// Poll nao bloqueante. Completa gesto no release (ou config chord A+B+C).
+GestureResult buttonsPollGesture();
+
 void enterDeepSleep();

@@ -1,70 +1,176 @@
 #include "buttons.h"
 #include "config.h"
+#include "serial_boot.h"
+#include "status_led.h"
 
 #include <Arduino.h>
-#include <HardwareSerial.h>
 #include <esp_sleep.h>
 
-ButtonState buttonsReadOnBoot() {
+namespace {
+
+enum class Phase : uint8_t { Idle, Active };
+
+Phase g_phase = Phase::Idle;
+uint8_t g_mask = 0;
+uint8_t g_latched = 0;
+uint32_t g_pressStart = 0;
+uint32_t g_chordDeadline = 0;
+bool g_longMarked = false;
+
+inline bool pinDown(uint8_t pin) {
+  return digitalRead(pin) == LOW;
+}
+
+uint8_t readMask() {
+  uint8_t m = 0;
+  if (pinDown(BTN_A_PIN)) {
+    m |= 0x01;
+  }
+  if (pinDown(BTN_B_PIN)) {
+    m |= 0x02;
+  }
+  if (pinDown(BTN_C_PIN)) {
+    m |= 0x04;
+  }
+  return m;
+}
+
+const char* mapEvent(uint8_t mask, bool isLong) {
+  const char* shortMap[] = {
+      nullptr,     "press_a",   "press_b",   "press_ab",
+      "press_c",   "press_ac",  "press_bc",  "press_abc",
+  };
+  const char* longMap[] = {
+      nullptr,    "long_a",   "long_b",   "long_ab",
+      "long_c",   "long_ac",  "long_bc",  "long_abc",
+  };
+  if (mask == 0 || mask > 7) {
+    return nullptr;
+  }
+  return isLong ? longMap[mask] : shortMap[mask];
+}
+
+}  // namespace
+
+void buttonsBegin() {
   pinMode(BTN_A_PIN, INPUT_PULLUP);
   pinMode(BTN_B_PIN, INPUT_PULLUP);
+  pinMode(BTN_C_PIN, INPUT_PULLUP);
+  g_phase = Phase::Idle;
+  g_mask = 0;
+  g_latched = 0;
+  g_longMarked = false;
+}
 
-  ButtonState state{};
-  const esp_sleep_wakeup_cause_t cause = esp_sleep_get_wakeup_cause();
-  state.fromGpioWake = (cause == ESP_SLEEP_WAKEUP_GPIO);
+bool buttonsAnyDown() {
+  return readMask() != 0;
+}
 
-  // Leitura imediata
-  state.a = digitalRead(BTN_A_PIN) == LOW;
-  state.b = digitalRead(BTN_B_PIN) == LOW;
+GestureResult buttonsPollGesture() {
+  GestureResult out{};
+  out.hasEvent = false;
+  out.isConfigChord = false;
+  out.pressStarted = false;
+  out.eventType = nullptr;
 
-  // Janela curta para capturar o segundo botao em acionamento proximo
-  const uint32_t deadline = millis() + BUTTON_BOTH_WINDOW_MS;
-  while (millis() < deadline) {
-    if (digitalRead(BTN_A_PIN) == LOW) {
-      state.a = true;
+  const uint8_t now = readMask();
+
+  if (g_phase == Phase::Idle) {
+    if (now == 0) {
+      return out;
     }
-    if (digitalRead(BTN_B_PIN) == LOW) {
-      state.b = true;
-    }
-    if (state.a && state.b) {
-      break;
-    }
-    delay(5);
+    g_phase = Phase::Active;
+    g_pressStart = millis();
+    g_chordDeadline = millis() + BUTTON_CHORD_WINDOW_MS;
+    g_mask = now;
+    g_latched = now;
+    g_longMarked = false;
+    out.pressStarted = true;
+    return out;
   }
 
-  Serial.printf("[buttons] wake=%s A=%d B=%d\n",
-                state.fromGpioWake ? "gpio" : "other",
-                state.a ? 1 : 0,
-                state.b ? 1 : 0);
-  return state;
+  // Active
+  if (millis() < g_chordDeadline) {
+    g_latched |= now;
+  }
+  g_mask = now;
+  g_latched |= now;
+
+  const uint32_t held = millis() - g_pressStart;
+
+  if (g_latched == 0x07 && held >= CONFIG_CHORD_HOLD_MS) {
+    statusLedOn();
+    Serial.println("[buttons] A+B+C 10s — portal");
+    out.isConfigChord = true;
+    g_phase = Phase::Idle;
+    return out;
+  }
+
+  if (held >= LONG_PRESS_MS) {
+    g_longMarked = true;
+  }
+
+  // Feedback visual em long / config
+  if (g_latched == 0x07 && held > LONG_PRESS_MS) {
+    if ((held / 250) % 2 == 0) {
+      statusLedOn();
+    } else {
+      statusLedOff();
+    }
+  }
+
+  if (now != 0) {
+    return out;
+  }
+
+  // Release — emitir gesto
+  const char* ev = mapEvent(g_latched, g_longMarked);
+  g_phase = Phase::Idle;
+  statusLedOff();
+
+  if (ev == nullptr) {
+    return out;
+  }
+
+  out.hasEvent = true;
+  out.eventType = ev;
+  Serial.printf("[buttons] gesto=%s latched=0x%02x long=%d\n", ev, g_latched,
+                g_longMarked ? 1 : 0);
+  return out;
 }
 
 void enterDeepSleep() {
   pinMode(BTN_A_PIN, INPUT_PULLUP);
   pinMode(BTN_B_PIN, INPUT_PULLUP);
+  pinMode(BTN_C_PIN, INPUT_PULLUP);
 
-  // Garante que nao dormimos enquanto o botao ainda esta pressionado
-  // (evita wake imediato em loop). Espera soltar ou timeout curto.
   const uint32_t releaseDeadline = millis() + 3000;
   while (millis() < releaseDeadline) {
-    const bool aDown = digitalRead(BTN_A_PIN) == LOW;
-    const bool bDown = digitalRead(BTN_B_PIN) == LOW;
-    if (!aDown && !bDown) {
+    if (readMask() == 0) {
       break;
     }
     delay(20);
   }
-  // Debounce apos soltar
   delay(30);
 
+  // ESP32-C3: só GPIO0–5 acordam do deep sleep.
+  const int wakePins[] = {BTN_A_PIN, BTN_B_PIN, BTN_C_PIN};
   uint64_t mask = 0;
-  mask |= (1ULL << BTN_A_PIN);
-  mask |= (1ULL << BTN_B_PIN);
+  for (int pin : wakePins) {
+    if (esp_sleep_is_valid_wakeup_gpio(static_cast<gpio_num_t>(pin))) {
+      mask |= (1ULL << pin);
+    } else {
+      Serial.printf("[sleep] GPIO%d ignorado (nao e wakeup RTC)\n", pin);
+    }
+  }
+  if (mask == 0) {
+    Serial.println("[sleep] ERRO: nenhum pino valido para wake");
+  }
 
   esp_deep_sleep_enable_gpio_wakeup(mask, ESP_GPIO_WAKEUP_GPIO_LOW);
 
   Serial.println("[sleep] entrando em deep sleep...");
-  Serial.flush();
-  delay(50);
+  serialBootFlush();
+  delay(20);
   esp_deep_sleep_start();
 }

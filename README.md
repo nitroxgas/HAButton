@@ -1,6 +1,6 @@
 # HAButton
 
-Firmware PlatformIO para **ESP32-C3 Super Mini** com dois switches de teclado mecânico, deep sleep por GPIO, WiFiManager e publicação MQTT com descoberta automática no Home Assistant.
+Firmware PlatformIO para **ESP32-C3 Super Mini**: 3 switches, sessão acordada, gestos MQTT (Home Assistant), OTA e pino de efeito LED.
 
 ## Início rápido
 
@@ -10,20 +10,17 @@ pio run -t upload
 pio device monitor
 ```
 
-No primeiro boot (ou se o Wi‑Fi falhar), conecte-se ao AP `HAButton-XXXX` e configure Wi‑Fi + MQTT.
-
-Documentação completa: [DOC/README.md](DOC/README.md).
+- Portal: segure **A+B+C ~10 s** → AP `HAButton-XXXX`
+- Idle default: **20 s** (reinicia a cada gesto)
+- OTA: [DOC/ota.md](DOC/ota.md)
+- Docs: [DOC/README.md](DOC/README.md)
 
 ## Hardware (resumo)
 
-| Função   | Pino   |
-|----------|--------|
-| Botão A  | GPIO4  |
-| Botão B  | GPIO5  |
-| Comum    | GND    |
+| Função | GPIO |
+|--------|------|
+| Botões A/B/C | 4 / 5 / 6 |
+| Efeito LED | 7 (PWM ~2 V) |
+| LED status | 8 |
 
-Switches para GND, pull-up interno. Alimentação por bateria (detalhes em [DOC/hardware.md](DOC/hardware.md)).
-
-## Licença
-
-Uso pessoal / projeto próprio — ajuste conforme necessário.
+Versão firmware: **1.3.0**
