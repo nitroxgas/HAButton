@@ -12,7 +12,7 @@ Build with Cursor, Grok-4.5 and PlatformIO - Firmware for **ESP32-C3 Super Mini*
 <p align="center">
   <img src="DOC/pictures/HAButton_front_p.png" alt="Front">
   <img src="DOC/pictures/HAButton_front_switch_p.png" alt="Switchs">
-  <img src="DOC/pictures/HAButton_front_back_p.png" alt="Switchs">
+  <img src="DOC/pictures/HAButton_back_p.png" alt="Back">
 </p>
 
 ## Quick start
