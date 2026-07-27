@@ -7,6 +7,14 @@ This is a quick weekend project—a first version with plenty of room for improv
 
 Build with Cursor, Grok-4.5 and PlatformIO - Firmware for **ESP32-C3 Super Mini**: 3 switches, awake session, MQTT gestures (Home Assistant), OTA, and LED effect pin.
 
+--- 
+
+<p align="center">
+  <img src="DOC/pictures/HAButton_front_p.png" alt="Front">
+  <img src="DOC/pictures/HAButton_front_switch_p.png" alt="Switchs">
+  <img src="DOC/pictures/HAButton_front_back_p.png" alt="Switchs">
+</p>
+
 ## Quick start
 
 ```bash
