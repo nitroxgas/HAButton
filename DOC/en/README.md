@@ -14,6 +14,10 @@
 | [development.md](development.md) | USB build overview |
 | [ota.md](ota.md) | Full OTA update guide |
 
+A quick project designed to repurpose used vaporizers for something useful — sending events to Home Assistant. It uses a small microcontroller powered by the vaporizer's circuitry to monitor three mechanical switches. When one or more buttons are pressed, the device wakes up, connects to Wi-Fi, and publishes its status via MQTT. Home Assistant automatically detects the device and can be programmed to trigger automations based on the event data.
+A quick weekend project; this is the first version, so there is still plenty of room for improvement.
+Build a similar one for any vaporizers you can get your hands on — it’s a great way to repurpose the electronic waste they generate.
+
 ## Goal
 
 Battery-powered device with 3 buttons: wakes, keeps an awake session (20 s idle), publishes MQTT gestures with Home Assistant discovery, supports LAN OTA, drives PWM on GPIO7 during publish, then returns to deep sleep.
