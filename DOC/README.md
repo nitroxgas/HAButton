@@ -18,6 +18,21 @@ Projeto rápido, feito para aproveitar vaporizadores usados, para algo útil - E
 Projeto rápido de final de semana, primeira versão, ainda muito a melhorar; 
 Faça um parecido para os vaporizadores que conseguir obter, melhor forma de reaproveitar o lixo eletrônico que eles produzem.
 
+O projeto alimenta um ESP32-C3 com os fios destinados ao sensor de pressão do vape. Opcionalmente utiliza o fio de retorno do sensor para informar o uso ao vape, caso ele tenha algum display ou led de animação na sua estrutura.
+Uso os GPIOs do ESP32-C3 que monitoram interrupção para tirar o dispositivo do estado de deepsleep e executar o envio de eventos via MQTT;
+Para os switchs uso 3 mecanicos padrão;
+No primeiro boot o dispositivo inicializa um Access Point para receber as primeiras configurações de wifi e etc. Após conectar no WIFI e publicar os dados no MQTT de um Home Assistant, as configurações podem ser realizadas diretamente na interface. Lembre-se que é necessário "acordar" o dispositivo para ele receber alterações de configuração via MQTT;
+Atualização via OTA simples, para ser possível o desenvolvimento e implementação usando a alimentação via vape. NUNCA LIGUE NA USB COM A ALIMENTAÇÃO DO VAPE, PODE DANIFICAR SEU USB;
+
+Você vai precisar:
+ Vape usado e desmontado. Cuidado neste processo de desmontagem, recomendo uso de luvas e óculos de proteção e descarte imediato dos componentes umidos, contém nicotina que irrita a pele e etc. Neste caso usei um G30k-Pro, mas quase todos funcionam da mesma forma, lendo um sensor de pressão e alimentando resistências para gerar vapor;
+ ESP32-C3 Super Mini;
+ 3 Switchs mecanicos, ou qualquer outro botão que tiver disponível;
+ Fios e etc para as ligações;
+ E um case, neste caso modelei um simples e imprimi em 3D;
+
+Projeto feito usando Cursor e Grok-4.5 High Fast; Sim, porque é um projeto rápido e IA é ótima para isto atualmente;
+
 ## Objetivo
 
-Device a bateria com 3 botões: acorda, mantém sessão (idle 20 s), publica gestos MQTT com discovery HA, OTA na LAN, efeito PWM no GPIO7 durante o envio, e volta ao deep sleep.
+Dispositivo com bateria e botões: acorda, mantém sessão (idle 20 s), publica gestos MQTT com discovery HA, OTA na LAN, efeito PWM no GPIO7 durante o envio, e volta ao deep sleep.
