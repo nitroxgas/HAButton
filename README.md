@@ -1,8 +1,11 @@
 # HAButton
 
-PlatformIO firmware for **ESP32-C3 Super Mini**: 3 switches, awake session, MQTT gestures (Home Assistant), OTA, and LED effect pin.
+A quick project designed to repurpose used vapes into something useful: sending events to Home Assistant. It uses a small microcontroller powered by the vape's circuitry to monitor three mechanical switches. When one or more buttons are pressed, the device wakes up, connects to Wi-Fi, and publishes its status via MQTT. Home Assistant automatically recognizes the device and can be programmed to trigger automations based on the event data.
+This is a quick weekend project—a first version with plenty of room for improvement.
 
 **Docs:** [English](DOC/en/README.md) · [Português](DOC/README.md)
+
+Build with Cursor, Grok-4.5 and PlatformIO - Firmware for **ESP32-C3 Super Mini**: 3 switches, awake session, MQTT gestures (Home Assistant), OTA, and LED effect pin.
 
 ## Quick start
 
