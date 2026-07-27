@@ -8,7 +8,6 @@ This is a quick weekend project—a first version with plenty of room for improv
 Build with Cursor, Grok-4.5 and PlatformIO - Firmware for **ESP32-C3 Super Mini**: 3 switches, awake session, MQTT gestures (Home Assistant), OTA, and LED effect pin.
 
 --- 
-
 <p align="center">
   <img src="DOC/pictures/HAButton_front_p.png" alt="Front">
   <img src="DOC/pictures/HAButton_front_switch_p.png" alt="Switchs">
@@ -26,7 +25,7 @@ pio device monitor
 - Portal: hold **A+B+C ~10 s** → AP `HAButton-XXXX`
 - Default idle: **20 s** (restarts on each gesture)
 - OTA: [English](DOC/en/ota.md) · [Português](DOC/ota.md)
-- Full documentation: [DOC/en](DOC/en/README.md) · [DOC (PT)](DOC/README.md)
+- Full documentation: [English](DOC/en/README.md) · [Português](DOC/README.md)
 
 ## Hardware (summary)
 
