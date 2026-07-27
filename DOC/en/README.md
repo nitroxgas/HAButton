@@ -24,7 +24,7 @@ You will need:
 A used, disassembled vape. Be careful during disassembly— **I recommend wearing gloves and safety goggles and immediately disposing of any wet components, as they contain nicotine that can irritate the skin.** For this build, I used a G30k-Pro, but almost all of them work the same way: reading a pressure sensor and powering heating coils to generate vapor.  
 ESP32-C3 Super Mini. 3 mechanical switches (or any other available buttons);  
 Wires and other components for the connections;  
-And a case—in this instance, I modeled a simple one and 3D printed it; [MakerWorld](https://makerworld.com/en/models/3101722-habutton-g30kpro-case#profileId-3496295) or [.3df Here](../pictures/habutton_G30kpro.3mf)
+And a case—in this instance, I modeled a simple one and 3D printed it; [MakerWorld](https://makerworld.com/en/models/3101722-habutton-g30kpro-case#profileId-3496295) or [.3mf Here](../pictures/habutton_G30kpro.3mf)
 
 Project created using Cursor and Grok-4.5 High Fast; yes, because it’s a quick project, and AI is excellent for this sort of thing nowadays;
 

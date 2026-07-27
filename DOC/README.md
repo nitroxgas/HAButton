@@ -28,7 +28,7 @@ Você vai precisar:
  ESP32-C3 Super Mini;
  3 Switchs mecanicos, ou qualquer outro botão que tiver disponível;
  Fios e etc para as ligações;
- E um case, neste caso modelei um simples e imprimi em 3D; Disponível em: [MakerWorld](https://makerworld.com/en/models/3101722-habutton-g30kpro-case#profileId-3496295) ou [.3df Neste Repositório](../DOC/pictures/habutton_G30kpro.3mf)
+ E um case, neste caso modelei um simples e imprimi em 3D; Disponível em: [MakerWorld](https://makerworld.com/en/models/3101722-habutton-g30kpro-case#profileId-3496295) ou [.3mf Neste Repositório](../DOC/pictures/habutton_G30kpro.3mf)
 
 ==Projeto feito usando Cursor e Grok-4.5 High Fast;== Sim, porque é um projeto rápido e IA é ótima para isto atualmente;
 
