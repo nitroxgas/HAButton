@@ -145,6 +145,22 @@
 #define DEFAULT_OTA_PASS "habutton-ota"
 #endif
 
+#ifndef DEFAULT_DEBUG_MQTT
+#define DEFAULT_DEBUG_MQTT "0"
+#endif
+
+#ifndef DEFAULT_LONG_PRESS_MS
+#define DEFAULT_LONG_PRESS_MS "800"
+#endif
+
+#ifndef DEFAULT_EFFECT_HOLD_MS
+#define DEFAULT_EFFECT_HOLD_MS "500"
+#endif
+
+#ifndef DEFAULT_EFFECT_TARGET_MV
+#define DEFAULT_EFFECT_TARGET_MV "2500"
+#endif
+
 #ifndef MQTT_CONNECT_TIMEOUT_MS
 #define MQTT_CONNECT_TIMEOUT_MS 8000
 #endif
@@ -154,10 +170,11 @@
 #endif
 
 #ifndef FW_VERSION
-#define FW_VERSION "1.3.2"
+#define FW_VERSION "1.4.2"
 #endif
 
 // Incrementar ao mudar o schema de discovery MQTT (força limpeza + republicação).
+// 7 = rollback do schema 6 (device discovery + payloads curtos) → contrato clássico.
 #ifndef DISCOVERY_SCHEMA_VERSION
-#define DISCOVERY_SCHEMA_VERSION 3
+#define DISCOVERY_SCHEMA_VERSION 7
 #endif

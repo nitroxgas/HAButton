@@ -1,8 +1,8 @@
-# Fallback YAML (sem discovery)
+# Fallback YAML (no discovery)
 
-**Idioma:** [Português](homeassistant-fallback-yaml.md) · [English](en/homeassistant-fallback-yaml.md)
+**Language:** [English](homeassistant-fallback-yaml.md) · [Português](../homeassistant-fallback-yaml.md)
 
-Se o discovery em `homeassistant/event/.../config` não aparecer (ACL), use:
+If discovery under `homeassistant/event/.../config` does not appear (ACL), use:
 
 ```yaml
 mqtt:
@@ -34,6 +34,6 @@ mqtt:
         model: "ESP32-C3 Super Mini"
 ```
 
-Ajuste o MAC. Depois: verificar YAML + reiniciar HA.
+Adjust the MAC. Then: check YAML + restart HA.
 
-Libere ACL `homeassistant/#` para voltar ao discovery automático.
+Allow ACL `homeassistant/#` to restore automatic discovery.

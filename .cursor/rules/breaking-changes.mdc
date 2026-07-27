@@ -1,0 +1,28 @@
+---
+description: Sempre perguntar antes de mudanças que quebrem MQTT, HA ou contratos estabelecidos
+alwaysApply: true
+---
+
+# Mudanças breaking — pedir confirmação
+
+Antes de implementar qualquer alteração que possa quebrar versões, integrações ou contratos já em uso, **pare e pergunte ao usuário**. Não implemente até ele decidir.
+
+## O que conta como breaking
+
+- Tópicos MQTT, formato de payload ou retain
+- Discovery Home Assistant (`unique_id`, `entity_id`, schema, `stat_t`/`cmd_t`)
+- Nomes de gestos / `event_type` que automações já usam
+- API de config NVS / portal / OTA que muda comportamento esperado
+- Remoção ou rename de entidades expostas ao HA
+- Downgrade/incompatibilidade entre firmware e docs/YAML do HA
+
+## Como proceder
+
+1. Expor o impacto (o que quebra no ESP, no broker e no HA).
+2. Oferecer opções (compatibilidade, dual-publish, feature flag, migrate HA, rollback).
+3. Só implementar depois de confirmação explícita do usuário.
+4. Se a mudança for aprovada, documentar migração e bump de schema/versão.
+
+## Preferência
+
+Quando houver dúvida: **compatibilidade com o que já está no Home Assistant** > otimização de payload/tamanho.

@@ -1,75 +1,75 @@
-# Home Assistant — contadores e automações
+# Home Assistant — counters and automations
 
-**Idioma:** [Português](homeassistant-contadores.md) · [English](en/homeassistant-counters.md)
+**Language:** [English](homeassistant-counters.md) · [Português](../homeassistant-contadores.md)
 
-Duas abordagens:
+Two approaches:
 
-1. **[Via UI](#via-ui-helpers--colar-automacao)** — Helpers + colar YAML no editor (sem editar arquivos).
-2. **[Via arquivos YAML](#via-arquivos-yaml-packages)** — package em `config/packages/` + include em `configuration.yaml`.
+1. **[Via UI](#via-ui-helpers--paste-automation)** — Helpers + paste YAML in the editor (no file editing).
+2. **[Via YAML files](#via-yaml-files-packages)** — package in `config/packages/` + include in `configuration.yaml`.
 
-O HAButton publica **uma** entidade MQTT Event. Cada gesto altera o atributo `event_type`.
+HAButton publishes **one** MQTT Event entity. Each gesture changes the `event_type` attribute.
 
-> Ajuste `event.habutton` ao `entity_id` real  
-> (**Configurações → Dispositivos → habutton**, ex.: `event.habutton_983dae4191c0_event`).
+> Adjust `event.habutton` to the real `entity_id`  
+> (**Settings → Devices → habutton**, e.g. `event.habutton_983dae4191c0_event`).
 
-**Não misture** a mesma automação criada na UI e no package (IDs/aliases duplicados). Escolha um caminho.
+**Do not mix** the same automation created in the UI and in the package (duplicate IDs/aliases). Pick one path.
 
 ## event_types
 
-| event_type | Significado |
-|------------|-------------|
-| `press_a` / `press_b` / `press_c` | Pressão curta |
-| `long_a` / `long_b` / `long_c` | Pressão longa (~≥800 ms) |
-| `press_ab` / `press_ac` / `press_bc` / `press_abc` | Combo pressão curta |
-| `long_ab` / `long_ac` / `long_bc` / `long_abc` | Combo pressão longa |
+| event_type | Meaning |
+|------------|---------|
+| `press_a` / `press_b` / `press_c` | Short press |
+| `long_a` / `long_b` / `long_c` | Long press (~≥800 ms) |
+| `press_ab` / `press_ac` / `press_bc` / `press_abc` | Short press combo |
+| `long_ab` / `long_ac` / `long_bc` / `long_abc` | Long press combo |
 
-## Via UI (Helpers + colar automação)
+## Via UI (Helpers + paste automation)
 
-## Formato atual (colar no editor)
+## Current format (paste in editor)
 
-Em versões recentes do HA, o YAML de automação usa:
+In recent HA versions, automation YAML uses:
 
-| Antigo (não usar) | Atual (colar na UI) |
-|-------------------|---------------------|
+| Old (do not use) | Current (paste in UI) |
+|------------------|-------------------------|
 | `trigger:` + `platform: state` | `triggers:` + `trigger: state` |
 | `condition:` | `conditions:` |
 | `action:` / `service:` | `actions:` + `action: domain.service` |
-| Lista sob `automation:` no YAML | **Um** documento (sem chave `automation:`) |
+| List under `automation:` in YAML | **One** document (no `automation:` key) |
 
-### Como colar
+### How to paste
 
-1. **Configurações → Automações e cenas → Criar automação → Criar nova automação**
-2. Foque o editor (área em branco) e pressione **Ctrl+V** (Mac: **Cmd+V**), **ou**
-3. Menu ⋮ → **Editar em YAML** → colar → **Salvar**
+1. **Settings → Automations & scenes → Create automation → Create new automation**
+2. Focus the editor (blank area) and press **Ctrl+V** (Mac: **Cmd+V**), **or**
+3. Menu ⋮ → **Edit in YAML** → paste → **Save**
 
-O HA converte o YAML colado no editor visual.  
-Não edite `automations.yaml` manualmente.
+HA converts the pasted YAML to the visual editor.  
+Do not edit `automations.yaml` by hand.
 
 ---
 
-## 1) Contadores (Helpers — sem YAML)
+## 1) Counters (Helpers — no YAML)
 
-Para cada `event_type` que quiser contar:
+For each `event_type` you want to count:
 
-1. **Configurações → Dispositivos e serviços → Helpers → Criar helper**
-2. Tipo **Counter** (Contador)
-3. Nome sugerido: `HAButton press_a` (o HA gera `counter.habutton_press_a`)
-4. Inicial `0`, passo `1`
+1. **Settings → Devices & services → Helpers → Create helper**
+2. Type **Counter**
+3. Suggested name: `HAButton press_a` (HA generates `counter.habutton_press_a`)
+4. Initial `0`, step `1`
 
-Crie todos os 14 contadores (ou só os que precisa), com nomes que resultem em:
+Create all 14 counters (or only the ones you need), with names that result in:
 
 `counter.habutton_<event_type>`  
-ex.: `counter.habutton_press_a`, `counter.habutton_long_abc`
+e.g. `counter.habutton_press_a`, `counter.habutton_long_abc`
 
 ---
 
-## 2) Automação — contar todos os eventos
+## 2) Automation — count all events
 
-Cole isto numa **nova automação** (substitua o `entity_id` do evento):
+Paste this into a **new automation** (replace the event `entity_id`):
 
 ```yaml
-alias: HAButton contar todos os eventos
-description: Incrementa counter.habutton_<event_type> em cada gesto
+alias: HAButton count all events
+description: Increments counter.habutton_<event_type> on each gesture
 mode: queued
 max: 20
 triggers:
@@ -87,15 +87,15 @@ actions:
       entity_id: "{{ counter_id }}"
 ```
 
-Requisitos: helpers `counter.habutton_*` já criados com o sufixo correspondente ao `event_type`.
+Requirements: helpers `counter.habutton_*` already created with the suffix matching `event_type`.
 
-### Variante com `choose` (explícita)
+### Variant with `choose` (explicit)
 
-Use se prefere ramos fixos (cole também no editor):
+Use if you prefer fixed branches (also paste in the editor):
 
 ```yaml
-alias: HAButton contar (choose)
-description: Conta cada event_type no seu contador
+alias: HAButton count (choose)
+description: Counts each event_type in its counter
 mode: queued
 max: 20
 triggers:
@@ -216,13 +216,13 @@ actions:
 
 ---
 
-## 3) Automação — ações por gesto
+## 3) Automation — actions per gesture
 
-Cole numa **segunda** automação (independente da de contagem). Substitua as entidades pelas suas:
+Paste into a **second** automation (independent from the counting one). Replace entities with yours:
 
 ```yaml
-alias: HAButton gestos → ações
-description: Ações por event_type (edite as entidades)
+alias: HAButton gestures → actions
+description: Actions per event_type (edit the entities)
 mode: queued
 max: 20
 triggers:
@@ -329,10 +329,10 @@ actions:
           - action: script.emergencia
 ```
 
-### Um gesto só (mínimo)
+### Single gesture (minimal)
 
 ```yaml
-alias: HAButton press_a → alternar luz
+alias: HAButton press_a → toggle light
 description: ""
 mode: single
 triggers:
@@ -349,109 +349,109 @@ actions:
 
 ---
 
-## 4) Totais por hora / dia / semana / mês (opcional, ainda na UI)
+## 4) Totals by hour / day / week / month (optional, still in UI)
 
-Sem editar arquivos:
+Without editing files:
 
-1. **Helpers → Criar helper → Template**  
-   - Estado: `{{ states('counter.habutton_press_a') | int(0) }}`  
-   - Classe de estado: **Total increasing** (`total_increasing`)  
-   - Unidade: `eventos`
-2. **Helpers → Criar helper → Utility Meter**  
-   - Fonte: o sensor template acima  
-   - Ciclo: hourly / daily / weekly / monthly  
+1. **Helpers → Create helper → Template**  
+   - State: `{{ states('counter.habutton_press_a') | int(0) }}`  
+   - State class: **Total increasing** (`total_increasing`)  
+   - Unit: `events`
+2. **Helpers → Create helper → Utility Meter**  
+   - Source: the template sensor above  
+   - Cycle: hourly / daily / weekly / monthly  
 
-Repita só para os gestos que importam.
+Repeat only for the gestures that matter.
 
 ---
 
-## Como testar
+## How to test
 
-1. **Ferramentas de desenvolvedor → Estados** → `event.…` → atributo `event_type`
-2. Dispare um gesto → `counter.habutton_press_a` (etc.) deve incrementar
-3. Na automação → **Rastros** para ver trigger / choose
+1. **Developer tools → States** → `event.…` → `event_type` attribute
+2. Trigger a gesture → `counter.habutton_press_a` (etc.) should increment
+3. In the automation → **Traces** to see trigger / choose
 
 ## Checklist (UI)
 
-- [ ] Entidade `event.…` visível (MQTT discovery)
-- [ ] Contadores criados via **Helpers** (`counter.habutton_<event_type>`)
-- [ ] Automação de contagem colada no editor (formato `triggers` / `actions`)
-- [ ] Automação de ações colada (suas entidades)
-- [ ] (Opcional) Template + Utility Meter via Helpers
+- [ ] `event.…` entity visible (MQTT discovery)
+- [ ] Counters created via **Helpers** (`counter.habutton_<event_type>`)
+- [ ] Counting automation pasted in editor (`triggers` / `actions` format)
+- [ ] Actions automation pasted (your entities)
+- [ ] (Optional) Template + Utility Meter via Helpers
 
 ---
 
-## Via arquivos YAML (packages)
+## Via YAML files (packages)
 
-Use quando quer versionar tudo em arquivos ou criar os 14 contadores + meters de uma vez.
+Use when you want to version everything in files or create all 14 counters + meters at once.
 
-### Onde ficam os arquivos
+### Where files live
 
-Pasta de configuração do Home Assistant (mesmo lugar que `configuration.yaml`):
+Home Assistant configuration folder (same place as `configuration.yaml`):
 
-| Instalação | Caminho típico |
-|------------|----------------|
+| Installation | Typical path |
+|--------------|--------------|
 | Home Assistant OS / Supervised | `/config/` (File Editor / Samba / Studio Code Server) |
-| Container Docker | volume montado, ex.: `/home/…/homeassistant/` → `/config` |
-| Core (venv) | diretório passado em `-c` / onde está `configuration.yaml` |
+| Docker container | mounted volume, e.g. `/home/…/homeassistant/` → `/config` |
+| Core (venv) | directory passed in `-c` / where `configuration.yaml` lives |
 
-Estrutura sugerida:
+Suggested structure:
 
 ```text
-config/                          # ou /config no HA OS
-├── configuration.yaml           # arquivo principal (editar)
-├── automations.yaml             # gerido pela UI — não misturar aqui
-└── packages/                    # criar esta pasta
-    └── habutton.yaml            # package HAButton (criar)
+config/                          # or /config on HA OS
+├── configuration.yaml           # main file (edit)
+├── automations.yaml             # managed by UI — do not mix here
+└── packages/                    # create this folder
+    └── habutton.yaml            # HAButton package (create)
 ```
 
-### Passo 1 — Ativar packages no `configuration.yaml`
+### Step 1 — Enable packages in `configuration.yaml`
 
-Abra `configuration.yaml` e garanta que o bloco `homeassistant:` inclui `packages`.
+Open `configuration.yaml` and ensure the `homeassistant:` block includes `packages`.
 
-Se `homeassistant:` **já existe**:
+If `homeassistant:` **already exists**:
 
 ```yaml
 homeassistant:
-  # ... outras opções que já tem (name, unit_system, etc.)
+  # ... other options you already have (name, unit_system, etc.)
   packages: !include_dir_named packages
 ```
 
-Se `homeassistant:` **não existe**, adicione:
+If `homeassistant:` **does not exist**, add:
 
 ```yaml
 homeassistant:
   packages: !include_dir_named packages
 ```
 
-> Indentação: `packages:` deve ter **2 espaços** dentro de `homeassistant:`.  
-> `!include_dir_named packages` carrega cada `*.yaml` da pasta `packages/` (o nome do arquivo vira o nome do package).
+> Indentation: `packages:` must be **2 spaces** inside `homeassistant:`.  
+> `!include_dir_named packages` loads each `*.yaml` from the `packages/` folder (the file name becomes the package name).
 
-Mantenha também a linha padrão para automações da UI (não remova):
+Also keep the default line for UI automations (do not remove):
 
 ```yaml
 automation: !include automations.yaml
 ```
 
-As automações do package usam outra chave (`automation habutton:` abaixo) e coexistem com as da UI.
+Package automations use a different key (`automation habutton:` below) and coexist with UI ones.
 
-### Passo 2 — Criar a pasta e o arquivo
+### Step 2 — Create the folder and file
 
-1. Crie a pasta `packages` ao lado de `configuration.yaml`.
-2. Crie `packages/habutton.yaml` com o conteúdo da próxima seção.
-3. Substitua `event.habutton` pelo `entity_id` real em todos os lugares.
+1. Create the `packages` folder next to `configuration.yaml`.
+2. Create `packages/habutton.yaml` with the content from the next section.
+3. Replace `event.habutton` with the real `entity_id` everywhere.
 
-### Passo 3 — Conteúdo de `packages/habutton.yaml`
+### Step 3 — Contents of `packages/habutton.yaml`
 
-O arquivo do package **não** repete a chave `packages:`.  
-Coloque os domínios na raiz, como em `configuration.yaml`.
+The package file **does not** repeat the `packages:` key.  
+Place domains at the root level, like in `configuration.yaml`.
 
-**Compatibilidade MQTT (firmware ≥ 1.4.2 / schema 7):** o package **não** referencia tópicos MQTT — apenas o `entity_id` do evento e `attributes.event_type`. Com o rollback, o contrato voltou a ser `{base}/event` + `{"event_type":"..."}` e `unique_id` `…_event`. **Não precisa alterar a estrutura do package**; apenas verifique que o `entity_id` ainda aponta à entidade correta (ex.: `event.habutton` ou `event.habutton_<mac>_event`). Se durante o período com bug o HA criou `…_e`, atualize o `entity_id` no package para a entidade restaurada `…_event`.
+**MQTT compatibility (firmware ≥ 1.4.2 / schema 7):** the package **does not** reference MQTT topics — only the event `entity_id` and `attributes.event_type`. With the rollback, the contract is again `{base}/event` + `{"event_type":"..."}` and `unique_id` `…_event`. **You do not need to change the package structure**; just verify that `entity_id` still points to the correct entity (e.g. `event.habutton` or `event.habutton_<mac>_event`). If during the broken period HA created `…_e`, update `entity_id` in the package to the restored `…_event` entity.
 
 ```yaml
 # packages/habutton.yaml
-# Package HAButton — contadores, automação de contagem, templates e utility_meters.
-# Substitua event.habutton pelo entity_id real.
+# HAButton package — counters, counting automation, templates and utility_meters.
+# Replace event.habutton with the real entity_id.
 
 counter:
   habutton_press_a:
@@ -511,11 +511,11 @@ counter:
     initial: 0
     step: 1
 
-# Chave com label: não conflita com automation: !include automations.yaml
+# Labeled key: does not conflict with automation: !include automations.yaml
 automation habutton:
   - id: habutton_count_all_events
-    alias: "HAButton contar todos os eventos"
-    description: "Incrementa counter.habutton_<event_type>"
+    alias: "HAButton count all events"
+    description: "Increments counter.habutton_<event_type>"
     mode: queued
     max: 20
     triggers:
@@ -533,8 +533,8 @@ automation habutton:
           entity_id: "{{ counter_id }}"
 
   - id: habutton_gestos_acoes
-    alias: "HAButton gestos → ações"
-    description: "Edite as entidades de destino"
+    alias: "HAButton gestures → actions"
+    description: "Edit the target entities"
     mode: queued
     max: 20
     triggers:
@@ -645,72 +645,72 @@ template:
         unique_id: habutton_press_a_total
         state: "{{ states('counter.habutton_press_a') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_b total"
         unique_id: habutton_press_b_total
         state: "{{ states('counter.habutton_press_b') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_c total"
         unique_id: habutton_press_c_total
         state: "{{ states('counter.habutton_press_c') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_a total"
         unique_id: habutton_long_a_total
         state: "{{ states('counter.habutton_long_a') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_b total"
         unique_id: habutton_long_b_total
         state: "{{ states('counter.habutton_long_b') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_c total"
         unique_id: habutton_long_c_total
         state: "{{ states('counter.habutton_long_c') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_ab total"
         unique_id: habutton_press_ab_total
         state: "{{ states('counter.habutton_press_ab') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_ac total"
         unique_id: habutton_press_ac_total
         state: "{{ states('counter.habutton_press_ac') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_bc total"
         unique_id: habutton_press_bc_total
         state: "{{ states('counter.habutton_press_bc') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton press_abc total"
         unique_id: habutton_press_abc_total
         state: "{{ states('counter.habutton_press_abc') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_ab total"
         unique_id: habutton_long_ab_total
         state: "{{ states('counter.habutton_long_ab') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_ac total"
         unique_id: habutton_long_ac_total
         state: "{{ states('counter.habutton_long_ac') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_bc total"
         unique_id: habutton_long_bc_total
         state: "{{ states('counter.habutton_long_bc') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
       - name: "HAButton long_abc total"
         unique_id: habutton_long_abc_total
         state: "{{ states('counter.habutton_long_abc') | int(0) }}"
         state_class: total_increasing
-        unit_of_measurement: "eventos"
+        unit_of_measurement: "events"
 
 utility_meter:
   habutton_press_a_hourly:
@@ -883,20 +883,20 @@ utility_meter:
     cycle: monthly
 ```
 
-Pode remover do package os `utility_meter` / `template` / automações de ação que não precisa.
+You can remove from the package the `utility_meter` / `template` / action automations you do not need.
 
-### Passo 4 — Validar e aplicar
+### Step 4 — Validate and apply
 
-1. **Ferramentas de desenvolvedor → YAML → Verificar configuração**  
-   (ou **Configurações → Sistema → Reiniciar → Verificação rápida**)
-2. Se OK: **Reiniciar Home Assistant**  
-   (packages / `counter` / `template` / `utility_meter` exigem reinício; automação sozinha às vezes recarrega, mas reinício é o caminho seguro)
-3. Confira entidades: `counter.habutton_press_a`, `sensor.habutton_press_a_total`, `sensor.habutton_press_a_daily`, etc.
-4. Automações do package aparecem em **Automações e cenas** (podem ser somente leitura na UI se vêm de YAML com label)
+1. **Developer tools → YAML → Check configuration**  
+   (or **Settings → System → Restart → Quick check**)
+2. If OK: **Restart Home Assistant**  
+   (packages / `counter` / `template` / `utility_meter` require restart; automation alone sometimes reloads, but restart is the safe path)
+3. Check entities: `counter.habutton_press_a`, `sensor.habutton_press_a_total`, `sensor.habutton_press_a_daily`, etc.
+4. Package automations appear in **Automations & scenes** (may be read-only in the UI if they come from labeled YAML)
 
-### Alternativa sem pasta `packages/`
+### Alternative without `packages/` folder
 
-Tudo em `configuration.yaml` (menos organizado):
+Everything in `configuration.yaml` (less organized):
 
 ```yaml
 homeassistant:
@@ -907,19 +907,19 @@ counter:
     name: "HAButton press_a"
     initial: 0
     step: 1
-  # ... contadores restantes
+  # ... remaining counters
 
 automation habutton:
   - id: habutton_count_all_events
-    alias: "HAButton contar todos os eventos"
+    alias: "HAButton count all events"
     mode: queued
     triggers:
       - trigger: state
         entity_id: event.habutton
-    # ... resto igual ao package
+    # ... rest same as package
 ```
 
-Ou um único arquivo incluído:
+Or a single included file:
 
 ```yaml
 # configuration.yaml
@@ -928,22 +928,22 @@ homeassistant:
     habutton: !include packages/habutton.yaml
 ```
 
-(neste modo o conteúdo de `habutton.yaml` é o mesmo do Passo 3.)
+(in this mode the content of `habutton.yaml` is the same as in Step 3.)
 
-### Conflitos comuns
+### Common conflicts
 
-| Sintoma | Causa / correção |
-|---------|------------------|
-| Integração `packages` não encontrada | `packages:` fora de `homeassistant:` — indentar 2 espaços |
-| Entity ID já existe | Contador/helper já criado na UI com o mesmo id — delete o helper ou renomeie no YAML |
-| Automação duplicada | Mesmo `id`/`alias` na UI e no package — remova um lado |
-| YAML inválido | Indentação; use o verificador de configuração antes de reiniciar |
+| Symptom | Cause / fix |
+|---------|-------------|
+| `packages` integration not found | `packages:` outside `homeassistant:` — indent 2 spaces |
+| Entity ID already exists | Counter/helper already created in UI with same id — delete the helper or rename in YAML |
+| Duplicate automation | Same `id`/`alias` in UI and package — remove one side |
+| Invalid YAML | Indentation; use configuration checker before restart |
 
-### Checklist (arquivos)
+### Checklist (files)
 
-- [ ] Pasta `packages/` criada ao lado de `configuration.yaml`
-- [ ] `homeassistant: packages: !include_dir_named packages` em `configuration.yaml`
-- [ ] `packages/habutton.yaml` com contadores + `automation habutton:`
-- [ ] `event.habutton` ajustado ao `entity_id` real
-- [ ] Configuração verificada + Home Assistant reiniciado
-- [ ] Sem contadores/automações duplicados na UI
+- [ ] `packages/` folder created next to `configuration.yaml`
+- [ ] `homeassistant: packages: !include_dir_named packages` in `configuration.yaml`
+- [ ] `packages/habutton.yaml` with counters + `automation habutton:`
+- [ ] `event.habutton` adjusted to the real `entity_id`
+- [ ] Configuration checked + Home Assistant restarted
+- [ ] No duplicate counters/automations in the UI

@@ -1,5 +1,8 @@
 # Hardware
 
+**Idioma:** [Português](hardware.md) · [English](en/hardware.md)
+
+
 ## Placa
 
 **ESP32-C3 Super Mini** (board PlatformIO `esp32-c3-devkitm-1`).

@@ -24,24 +24,20 @@ String otaHostname(const AppConfig& cfg) {
   return String(buf);
 }
 
-void effectStartFromInterrupt() {
-  if (g_effectOn) {
-    return;
-  }
+void effectPulseOn() {
   effectOutRampToTarget();
   g_effectOn = true;
   g_effectAtTargetMs = millis();
 }
 
-void effectStopAfterPublish() {
+void effectPulseOff(const AppConfig& cfg) {
   if (!g_effectOn) {
-    effectOutRampToTarget();
-    g_effectAtTargetMs = millis();
-    g_effectOn = true;
+    return;
   }
+  const uint32_t holdMin = cfg.effectHoldMsValue();
   const uint32_t elapsed = millis() - g_effectAtTargetMs;
-  if (elapsed < EFFECT_HOLD_MIN_MS) {
-    delay(EFFECT_HOLD_MIN_MS - elapsed);
+  if (elapsed < holdMin) {
+    delay(holdMin - elapsed);
   }
   effectOutOff();
   g_effectOn = false;
@@ -52,7 +48,16 @@ void effectForceOff() {
   g_effectOn = false;
 }
 
-// Leitura diagnostica (antes de dirigir LED/efeito). GPIO0 NAO e strapping no C3.
+// Fluxo pedido: GPIO7 ON -> publish MQTT -> hold min -> GPIO7 OFF.
+void publishWithEffect(AppConfig& cfg, const char* eventType) {
+  if (eventType == nullptr || eventType[0] == '\0') {
+    return;
+  }
+  effectPulseOn();
+  mqttPublishGesture(cfg, eventType);
+  effectPulseOff(cfg);
+}
+
 void logBootPinStates() {
   const int pins[] = {0, 2, 3, 4, 5, 8, 9};
   Serial.print("[boot] niveis GPIO ");
@@ -61,43 +66,37 @@ void logBootPinStates() {
     Serial.printf("%d=%d ", pin, digitalRead(pin));
   }
   Serial.println();
-  Serial.println("[boot] strapping C3: GPIO2/8/9 (nao GPIO0). BOOT=GPIO9 HIGH=app");
-  if (digitalRead(9) == LOW) {
-    Serial.println("[boot] AVISO: GPIO9 LOW — se assim no reset, entra download mode");
-  }
-  if (digitalRead(2) == LOW) {
-    Serial.println("[boot] AVISO: GPIO2 LOW — risco de boot/flash instavel");
-  }
 }
 
 }  // namespace
 
 void setup() {
-  // Serial ANTES de qualquer log; CDC sem host nao pode bloquear (bateria).
   serialBootBegin();
   logBootPinStates();
 
   statusLedBegin();
-  // Pulso curto: confirma boot na bateria sem monitor USB.
   statusLedOn();
 
-  // Efeito o mais cedo possivel apos wake por GPIO / botao ainda pressionado.
   effectOutBegin();
   buttonsBegin();
+
   const bool wokeByGpio =
       (esp_sleep_get_wakeup_cause() == ESP_SLEEP_WAKEUP_GPIO);
+
+  // Identifica o botao do wake ANTES do Wi-Fi (GPIO7 ainda off).
+  const char* wakeEvent = nullptr;
   if (wokeByGpio || buttonsAnyDown()) {
-    effectStartFromInterrupt();
-    Serial.println("[effect] GPIO7 ativo (interrupcao/press)");
+    wakeEvent = buttonsCaptureWakePress();
+    Serial.printf("[main] wake mask/event=%s\n",
+                  wakeEvent != nullptr ? wakeEvent : "(nenhum)");
   }
 
   delay(30);
   statusLedOff();
   Serial.println();
   Serial.printf("=== HAButton ESP32-C3 %s ===\n", FW_VERSION);
-  Serial.printf("[main] wake=%s btn_down=%d (A=%d B=%d C=%d)\n",
-                wokeByGpio ? "GPIO" : "outro", buttonsAnyDown() ? 1 : 0,
-                BTN_A_PIN, BTN_B_PIN, BTN_C_PIN);
+  Serial.printf("[main] wake=%s btn_down=%d\n", wokeByGpio ? "GPIO" : "outro",
+                buttonsAnyDown() ? 1 : 0);
 
   AppConfig cfg;
   const bool wifiOk = wifiSetupAndConnect(cfg);
@@ -115,31 +114,55 @@ void setup() {
 
   if (!mqttEnsureConnected(cfg)) {
     Serial.println("[main] MQTT indisponivel; sessao curta sem broker");
+  } else {
+    char detail[96];
+    snprintf(detail, sizeof(detail), "wake=%s event=%s ip=%s",
+             wokeByGpio ? "gpio" : "other",
+             wakeEvent != nullptr ? wakeEvent : "none",
+             WiFi.localIP().toString().c_str());
+    mqttPublishLog(cfg, "session_start", detail);
+  }
+
+  // Publica o gesto que acordou: ON GPIO7 -> MQTT -> OFF GPIO7.
+  if (wakeEvent != nullptr) {
+    publishWithEffect(cfg, wakeEvent);
+    buttonsWaitReleaseAndReset();
+  } else {
+    buttonsWaitReleaseAndReset();
   }
 
   statusLedOn();
   uint32_t idleDeadline = millis() + cfg.sleepDelayMsValue();
-  Serial.printf("[main] sessao acordada idle=%u ms\n", cfg.sleepDelayMsValue());
+  Serial.printf("[main] sessao acordada idle=%u ms debug=%d\n",
+                cfg.sleepDelayMsValue(), cfg.debugMqttEnabled() ? 1 : 0);
+
+  bool sleepWarned = false;
 
   while (millis() < idleDeadline) {
     otaHandle();
+    mqttHandle(cfg);
 
-    // Enquanto OTA estiver ativo, nao deixar o idle expirar.
     if (otaIsInProgress()) {
       idleDeadline = millis() + cfg.sleepDelayMsValue();
+      sleepWarned = false;
       delay(5);
       continue;
     }
 
     mqttEnsureConnected(cfg);
 
-    const GestureResult g = buttonsPollGesture();
-    if (g.pressStarted) {
-      effectStartFromInterrupt();
+    const uint32_t remain = (idleDeadline > millis()) ? (idleDeadline - millis()) : 0;
+    if (!sleepWarned && remain > 0 && remain <= 2000) {
+      sleepWarned = true;
+      mqttPublishLog(cfg, "sleep_soon", "idle_expiring");
+      Serial.println("[main] idle quase esgotado — sleep em breve");
     }
+
+    const GestureResult g = buttonsPollGesture();
 
     if (g.isConfigChord) {
       Serial.println("[main] config chord — reiniciando no portal");
+      mqttPublishLog(cfg, "portal_request", "abc_10s");
       wifiRequestConfigPortalOnNextBoot();
       effectForceOff();
       statusLedOff();
@@ -147,10 +170,11 @@ void setup() {
       ESP.restart();
     }
 
+    // Proximos acionamentos na sessao: identifica no release, depois GPIO7+MQTT+OFF.
     if (g.hasEvent && g.eventType != nullptr) {
-      mqttPublishGesture(cfg, g.eventType);
-      effectStopAfterPublish();
+      publishWithEffect(cfg, g.eventType);
       idleDeadline = millis() + cfg.sleepDelayMsValue();
+      sleepWarned = false;
       Serial.printf("[main] idle reset -> %u ms\n", cfg.sleepDelayMsValue());
     }
 
@@ -158,6 +182,8 @@ void setup() {
   }
 
   Serial.println("[main] idle esgotado — deep sleep");
+  mqttPublishLog(cfg, "sleep_enter", "idle_timeout");
+  delay(80);
   statusLedOff();
   effectForceOff();
   mqttDisconnect();

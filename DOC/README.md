@@ -1,11 +1,15 @@
 # Documentação HAButton
 
+**Idioma:** [Português](README.md) · [English](en/README.md)
+
 | Documento | Conteúdo |
 |-----------|----------|
 | [arquitetura.md](arquitetura.md) | Sessão acordada, módulos, MQTT |
 | [hardware.md](hardware.md) | Pinout A/B/C, efeito GPIO7, portal |
 | [configuracao.md](configuracao.md) | Portal, sleep 20s, event_types |
-| [homeassistant-contadores.md](homeassistant-contadores.md) | Contagem por event_type |
+| [mqtt-topicos.md](mqtt-topicos.md) | Todos os tópicos MQTT (runtime + discovery) |
+| [mqtt-config.md](mqtt-config.md) | Debug logs + config remota via MQTT/HA |
+| [homeassistant-contadores.md](homeassistant-contadores.md) | Contadores/automações: UI ou packages YAML |
 | [homeassistant-fallback-yaml.md](homeassistant-fallback-yaml.md) | YAML se discovery falhar |
 | [desenvolvimento.md](desenvolvimento.md) | Build USB e overview |
 | [ota.md](ota.md) | Guia completo de update OTA |

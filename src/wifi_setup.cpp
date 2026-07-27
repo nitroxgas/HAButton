@@ -1,5 +1,7 @@
 #include "wifi_setup.h"
+#include "buttons.h"
 #include "config.h"
+#include "effect_out.h"
 #include "status_led.h"
 
 #include <Preferences.h>
@@ -23,11 +25,48 @@ void applyDefaults(AppConfig& cfg) {
   cfg.btnCName = DEFAULT_BTN_C_NAME;
   cfg.sleepDelayMs = DEFAULT_SLEEP_DELAY_MS;
   cfg.otaPass = DEFAULT_OTA_PASS;
+  cfg.debugMqtt = DEFAULT_DEBUG_MQTT;
+  cfg.longPressMs = DEFAULT_LONG_PRESS_MS;
+  cfg.effectHoldMs = DEFAULT_EFFECT_HOLD_MS;
+  cfg.effectTargetMv = DEFAULT_EFFECT_TARGET_MV;
+}
+
+void normalizeConfig(AppConfig& cfg) {
+  cfg.mqttPrefix.trim();
+  if (cfg.mqttPrefix.isEmpty()) {
+    cfg.mqttPrefix = DEFAULT_MQTT_PREFIX;
+  }
+  cfg.sleepDelayMs.trim();
+  if (cfg.sleepDelayMs.isEmpty()) {
+    cfg.sleepDelayMs = DEFAULT_SLEEP_DELAY_MS;
+  }
+  if (cfg.otaPass.isEmpty()) {
+    cfg.otaPass = DEFAULT_OTA_PASS;
+  }
+  cfg.debugMqtt.trim();
+  if (cfg.debugMqtt != "1" && cfg.debugMqtt != "true" && cfg.debugMqtt != "ON") {
+    cfg.debugMqtt = "0";
+  } else {
+    cfg.debugMqtt = "1";
+  }
+  cfg.longPressMs.trim();
+  if (cfg.longPressMs.isEmpty()) {
+    cfg.longPressMs = DEFAULT_LONG_PRESS_MS;
+  }
+  cfg.effectHoldMs.trim();
+  if (cfg.effectHoldMs.isEmpty()) {
+    cfg.effectHoldMs = DEFAULT_EFFECT_HOLD_MS;
+  }
+  cfg.effectTargetMv.trim();
+  if (cfg.effectTargetMv.isEmpty()) {
+    cfg.effectTargetMv = DEFAULT_EFFECT_TARGET_MV;
+  }
 }
 
 void loadFromNvs(AppConfig& cfg) {
   applyDefaults(cfg);
   if (!prefs.begin(NVS_NAMESPACE, true)) {
+    normalizeConfig(cfg);
     return;
   }
   cfg.mqttHost = prefs.getString("mqtt_host", cfg.mqttHost);
@@ -41,7 +80,12 @@ void loadFromNvs(AppConfig& cfg) {
   cfg.btnCName = prefs.getString("btn_c_name", cfg.btnCName);
   cfg.sleepDelayMs = prefs.getString("sleep_delay", cfg.sleepDelayMs);
   cfg.otaPass = prefs.getString("ota_pass", cfg.otaPass);
+  cfg.debugMqtt = prefs.getString("debug_mqtt", cfg.debugMqtt);
+  cfg.longPressMs = prefs.getString("long_press", cfg.longPressMs);
+  cfg.effectHoldMs = prefs.getString("effect_hold", cfg.effectHoldMs);
+  cfg.effectTargetMv = prefs.getString("effect_mv", cfg.effectTargetMv);
   prefs.end();
+  normalizeConfig(cfg);
 }
 
 bool configChanged(const AppConfig& before, const AppConfig& after) {
@@ -50,10 +94,14 @@ bool configChanged(const AppConfig& before, const AppConfig& after) {
          before.mqttPrefix != after.mqttPrefix || before.deviceName != after.deviceName ||
          before.btnAName != after.btnAName || before.btnBName != after.btnBName ||
          before.btnCName != after.btnCName || before.sleepDelayMs != after.sleepDelayMs ||
-         before.otaPass != after.otaPass;
+         before.otaPass != after.otaPass || before.debugMqtt != after.debugMqtt ||
+         before.longPressMs != after.longPressMs || before.effectHoldMs != after.effectHoldMs ||
+         before.effectTargetMv != after.effectTargetMv;
 }
 
-void saveToNvs(const AppConfig& cfg) {
+void saveToNvs(const AppConfig& cfgIn, bool bumpDiscovery) {
+  AppConfig cfg = cfgIn;
+  normalizeConfig(cfg);
   if (!prefs.begin(NVS_NAMESPACE, false)) {
     Serial.println("[wifi] falha ao abrir NVS para gravacao");
     return;
@@ -62,21 +110,21 @@ void saveToNvs(const AppConfig& cfg) {
   prefs.putString("mqtt_port", cfg.mqttPort);
   prefs.putString("mqtt_user", cfg.mqttUser);
   prefs.putString("mqtt_pass", cfg.mqttPass);
-  String prefix = cfg.mqttPrefix;
-  prefix.trim();
-  if (prefix.isEmpty()) {
-    prefix = DEFAULT_MQTT_PREFIX;
-  }
-  prefs.putString("mqtt_prefix", prefix);
+  prefs.putString("mqtt_prefix", cfg.mqttPrefix);
   prefs.putString("device_name", cfg.deviceName);
   prefs.putString("btn_a_name", cfg.btnAName);
   prefs.putString("btn_b_name", cfg.btnBName);
   prefs.putString("btn_c_name", cfg.btnCName);
   prefs.putString("sleep_delay", cfg.sleepDelayMs);
   prefs.putString("ota_pass", cfg.otaPass);
-  // Republicar discovery HA apos mudanca de config MQTT/device.
-  prefs.putBool("disc_done", false);
-  prefs.putUChar("disc_ver", 0);
+  prefs.putString("debug_mqtt", cfg.debugMqtt);
+  prefs.putString("long_press", cfg.longPressMs);
+  prefs.putString("effect_hold", cfg.effectHoldMs);
+  prefs.putString("effect_mv", cfg.effectTargetMv);
+  if (bumpDiscovery) {
+    prefs.putBool("disc_done", false);
+    prefs.putUChar("disc_ver", 0);
+  }
   prefs.end();
 }
 
@@ -113,8 +161,54 @@ uint32_t AppConfig::sleepDelayMsValue() const {
   return static_cast<uint32_t>(v);
 }
 
+bool AppConfig::debugMqttEnabled() const {
+  return debugMqtt == "1";
+}
+
+uint32_t AppConfig::longPressMsValue() const {
+  long v = longPressMs.toInt();
+  if (v < 200) {
+    v = 200;
+  }
+  if (v > 10000) {
+    v = 10000;
+  }
+  return static_cast<uint32_t>(v);
+}
+
+uint32_t AppConfig::effectHoldMsValue() const {
+  long v = effectHoldMs.toInt();
+  if (v < 0) {
+    v = 0;
+  }
+  if (v > 10000) {
+    v = 10000;
+  }
+  return static_cast<uint32_t>(v);
+}
+
+uint16_t AppConfig::effectTargetMvValue() const {
+  long v = effectTargetMv.toInt();
+  if (v < 100) {
+    v = 100;
+  }
+  if (v > EFFECT_SUPPLY_MV) {
+    v = EFFECT_SUPPLY_MV;
+  }
+  return static_cast<uint16_t>(v);
+}
+
 void wifiLoadConfig(AppConfig& cfg) {
   loadFromNvs(cfg);
+}
+
+void wifiSaveConfig(const AppConfig& cfg) {
+  saveToNvs(cfg, false);
+}
+
+void wifiApplyRuntimeTuning(const AppConfig& cfg) {
+  buttonsSetLongPressMs(cfg.longPressMsValue());
+  effectOutSetTargetMv(cfg.effectTargetMvValue());
 }
 
 void wifiRequestConfigPortalOnNextBoot() {
@@ -155,29 +249,31 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   char btnCName[40];
   char sleepDelay[12];
   char otaPass[40];
+  char debugMqtt[4];
+  char longPress[8];
+  char effectHold[8];
+  char effectMv[8];
 
-  strncpy(mqttHost, cfg.mqttHost.c_str(), sizeof(mqttHost) - 1);
-  mqttHost[sizeof(mqttHost) - 1] = '\0';
-  strncpy(mqttPort, cfg.mqttPort.c_str(), sizeof(mqttPort) - 1);
-  mqttPort[sizeof(mqttPort) - 1] = '\0';
-  strncpy(mqttUser, cfg.mqttUser.c_str(), sizeof(mqttUser) - 1);
-  mqttUser[sizeof(mqttUser) - 1] = '\0';
-  strncpy(mqttPass, cfg.mqttPass.c_str(), sizeof(mqttPass) - 1);
-  mqttPass[sizeof(mqttPass) - 1] = '\0';
-  strncpy(mqttPrefix, cfg.mqttPrefix.c_str(), sizeof(mqttPrefix) - 1);
-  mqttPrefix[sizeof(mqttPrefix) - 1] = '\0';
-  strncpy(deviceName, cfg.deviceName.c_str(), sizeof(deviceName) - 1);
-  deviceName[sizeof(deviceName) - 1] = '\0';
-  strncpy(btnAName, cfg.btnAName.c_str(), sizeof(btnAName) - 1);
-  btnAName[sizeof(btnAName) - 1] = '\0';
-  strncpy(btnBName, cfg.btnBName.c_str(), sizeof(btnBName) - 1);
-  btnBName[sizeof(btnBName) - 1] = '\0';
-  strncpy(btnCName, cfg.btnCName.c_str(), sizeof(btnCName) - 1);
-  btnCName[sizeof(btnCName) - 1] = '\0';
-  strncpy(sleepDelay, cfg.sleepDelayMs.c_str(), sizeof(sleepDelay) - 1);
-  sleepDelay[sizeof(sleepDelay) - 1] = '\0';
-  strncpy(otaPass, cfg.otaPass.c_str(), sizeof(otaPass) - 1);
-  otaPass[sizeof(otaPass) - 1] = '\0';
+  auto copyField = [](char* dst, size_t n, const String& src) {
+    strncpy(dst, src.c_str(), n - 1);
+    dst[n - 1] = '\0';
+  };
+
+  copyField(mqttHost, sizeof(mqttHost), cfg.mqttHost);
+  copyField(mqttPort, sizeof(mqttPort), cfg.mqttPort);
+  copyField(mqttUser, sizeof(mqttUser), cfg.mqttUser);
+  copyField(mqttPass, sizeof(mqttPass), cfg.mqttPass);
+  copyField(mqttPrefix, sizeof(mqttPrefix), cfg.mqttPrefix);
+  copyField(deviceName, sizeof(deviceName), cfg.deviceName);
+  copyField(btnAName, sizeof(btnAName), cfg.btnAName);
+  copyField(btnBName, sizeof(btnBName), cfg.btnBName);
+  copyField(btnCName, sizeof(btnCName), cfg.btnCName);
+  copyField(sleepDelay, sizeof(sleepDelay), cfg.sleepDelayMs);
+  copyField(otaPass, sizeof(otaPass), cfg.otaPass);
+  copyField(debugMqtt, sizeof(debugMqtt), cfg.debugMqtt);
+  copyField(longPress, sizeof(longPress), cfg.longPressMs);
+  copyField(effectHold, sizeof(effectHold), cfg.effectHoldMs);
+  copyField(effectMv, sizeof(effectMv), cfg.effectTargetMv);
 
   WiFiManagerParameter pHost("mqtt_host", "MQTT Host", mqttHost, sizeof(mqttHost));
   WiFiManagerParameter pPort("mqtt_port", "MQTT Port", mqttPort, sizeof(mqttPort));
@@ -191,6 +287,10 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   WiFiManagerParameter pSleep("sleep_delay", "Sleep delay ms (idle / OTA)", sleepDelay,
                               sizeof(sleepDelay));
   WiFiManagerParameter pOta("ota_pass", "OTA Password", otaPass, sizeof(otaPass));
+  WiFiManagerParameter pDebug("debug_mqtt", "Debug MQTT logs (0/1)", debugMqtt, sizeof(debugMqtt));
+  WiFiManagerParameter pLong("long_press", "Long press ms", longPress, sizeof(longPress));
+  WiFiManagerParameter pHold("effect_hold", "Effect hold ms (min)", effectHold, sizeof(effectHold));
+  WiFiManagerParameter pMv("effect_mv", "Effect target mV", effectMv, sizeof(effectMv));
 
   wm.addParameter(&pHost);
   wm.addParameter(&pPort);
@@ -203,6 +303,10 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   wm.addParameter(&pBtnC);
   wm.addParameter(&pSleep);
   wm.addParameter(&pOta);
+  wm.addParameter(&pDebug);
+  wm.addParameter(&pLong);
+  wm.addParameter(&pHold);
+  wm.addParameter(&pMv);
 
   const String apName = makeApName();
   bool ok = false;
@@ -228,22 +332,21 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   cfg.btnCName = pBtnC.getValue();
   cfg.sleepDelayMs = pSleep.getValue();
   cfg.otaPass = pOta.getValue();
-
-  cfg.mqttPrefix.trim();
-  if (cfg.mqttPrefix.isEmpty()) {
-    cfg.mqttPrefix = DEFAULT_MQTT_PREFIX;
-  }
-  cfg.sleepDelayMs.trim();
-  if (cfg.sleepDelayMs.isEmpty()) {
-    cfg.sleepDelayMs = DEFAULT_SLEEP_DELAY_MS;
-  }
-  if (cfg.otaPass.isEmpty()) {
-    cfg.otaPass = DEFAULT_OTA_PASS;
-  }
+  cfg.debugMqtt = pDebug.getValue();
+  cfg.longPressMs = pLong.getValue();
+  cfg.effectHoldMs = pHold.getValue();
+  cfg.effectTargetMv = pMv.getValue();
+  normalizeConfig(cfg);
 
   if (forcePortal || configChanged(cfgBefore, cfg)) {
-    saveToNvs(cfg);
+    const bool identityChanged =
+        cfgBefore.mqttHost != cfg.mqttHost || cfgBefore.mqttPort != cfg.mqttPort ||
+        cfgBefore.mqttUser != cfg.mqttUser || cfgBefore.mqttPass != cfg.mqttPass ||
+        cfgBefore.mqttPrefix != cfg.mqttPrefix || cfgBefore.deviceName != cfg.deviceName;
+    saveToNvs(cfg, identityChanged || forcePortal);
   }
+
+  wifiApplyRuntimeTuning(cfg);
 
   if (!ok) {
     Serial.println("[wifi] falha ao conectar / portal expirou");
@@ -251,9 +354,10 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
     return false;
   }
 
-  Serial.printf("[wifi] conectado SSID=%s IP=%s sleep_delay=%u\n",
+  Serial.printf("[wifi] conectado SSID=%s IP=%s sleep=%u debug=%s\n",
                 WiFi.SSID().c_str(),
                 WiFi.localIP().toString().c_str(),
-                cfg.sleepDelayMsValue());
+                cfg.sleepDelayMsValue(),
+                cfg.debugMqtt.c_str());
   return true;
 }

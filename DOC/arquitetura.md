@@ -1,5 +1,7 @@
 # Arquitetura
 
+**Idioma:** [Português](arquitetura.md) · [English](en/architecture.md)
+
 ## Fluxo
 
 ```mermaid
@@ -35,8 +37,9 @@ MQTT, nomes, `sleep_delay`, `ota_pass`, `force_portal`, `disc_done`.
 
 ## MQTT
 
-- Discovery: `homeassistant/event/{deviceId}/config` (retained).
+- Discovery: `homeassistant/event/{deviceId}/config` (retained), com IP em `configuration_url` / `connections`.
 - Estado: `{device}/{mac}/event` com `{"event_type":"..."}`.
+- Configs (switch/number/text) via discovery clássico + `{base}/…/set` enquanto acordado.
 - Conexão mantida durante a sessão; discovery republicado se config mudar.
 
 ## Energia / efeito

@@ -16,6 +16,7 @@ uint8_t g_latched = 0;
 uint32_t g_pressStart = 0;
 uint32_t g_chordDeadline = 0;
 bool g_longMarked = false;
+uint32_t g_longPressMs = LONG_PRESS_MS;
 
 inline bool pinDown(uint8_t pin) {
   return digitalRead(pin) == LOW;
@@ -66,6 +67,52 @@ bool buttonsAnyDown() {
   return readMask() != 0;
 }
 
+uint8_t buttonsReadMask() {
+  return readMask();
+}
+
+const char* buttonsCaptureWakePress() {
+  // Amostra imediata + janela curta para combos (mesmo criterio do poll).
+  uint8_t latched = readMask();
+  const uint32_t deadline = millis() + BUTTON_CHORD_WINDOW_MS;
+  while (millis() < deadline) {
+    latched |= readMask();
+    if (latched == 0x07) {
+      break;
+    }
+    delay(5);
+  }
+  // Se ja soltou, ainda assim usamos o que foi latched na janela.
+  if (latched == 0) {
+    // Ultima tentativa: um botao pode ter acordado e ja solto — releitura unica.
+    delay(10);
+    latched = readMask();
+  }
+  return mapEvent(latched, false);
+}
+
+void buttonsWaitReleaseAndReset() {
+  const uint32_t deadline = millis() + 5000;
+  while (millis() < deadline && readMask() != 0) {
+    delay(10);
+  }
+  delay(40);
+  g_phase = Phase::Idle;
+  g_mask = 0;
+  g_latched = 0;
+  g_longMarked = false;
+}
+
+void buttonsSetLongPressMs(uint32_t ms) {
+  if (ms < 200) {
+    ms = 200;
+  }
+  if (ms > 10000) {
+    ms = 10000;
+  }
+  g_longPressMs = ms;
+}
+
 GestureResult buttonsPollGesture() {
   GestureResult out{};
   out.hasEvent = false;
@@ -106,12 +153,12 @@ GestureResult buttonsPollGesture() {
     return out;
   }
 
-  if (held >= LONG_PRESS_MS) {
+  if (held >= g_longPressMs) {
     g_longMarked = true;
   }
 
   // Feedback visual em long / config
-  if (g_latched == 0x07 && held > LONG_PRESS_MS) {
+  if (g_latched == 0x07 && held > g_longPressMs) {
     if ((held / 250) % 2 == 0) {
       statusLedOn();
     } else {

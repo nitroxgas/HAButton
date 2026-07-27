@@ -1,7 +1,15 @@
 # Configuração MQTT / Home Assistant
 
-## Contadores temporais
+**Idioma:** [Português](configuracao.md) · [English](en/configuration.md)
 
+## Tópicos MQTT
+
+Lista completa: **[mqtt-topicos.md](mqtt-topicos.md)**.  
+Config remota / debug: **[mqtt-config.md](mqtt-config.md)**.
+
+## Contadores e automações no Home Assistant
+
+Guia completo — **UI** (Helpers + colar no editor) e **arquivos** (`packages/habutton.yaml`):  
 **[homeassistant-contadores.md](homeassistant-contadores.md)**
 
 ## Sessão acordada e sleep
@@ -18,7 +26,11 @@ Após conectar, o device fica **acordado** (default **20 s** de idle).
 | Discovery | `homeassistant/event/habutton_<mac>/config` | sim |
 | Evento | `habutton/<mac>/event` | não |
 
-Payload: `{"event_type":"press_a"}` (ou `long_b`, `press_ab`, `press_abc`, etc.).
+Payload evento: `{"event_type":"press_a"}` (ou `long_b`, `press_ab`, `press_abc`, etc.).
+
+No discovery, o bloco `device` inclui IP local:
+- `configuration_url`: `http://<IP>` (link no device no HA)
+- `connections`: `["mac", …]` e `["ip", "<IP>"]`
 
 ### event_types
 
@@ -33,10 +45,16 @@ Uma única entidade `event` no device HA.
 | Campo | Default |
 |-------|---------|
 | MQTT Host/Port/User/Pass | ver `config.h` / `secrets.h` |
-| HA Discovery Prefix | `homeassistant` (discovery sempre também em `homeassistant`) |
+| HA Discovery Prefix | `homeassistant` |
 | Device / Botões A/B/C | `habutton`, nomes amigáveis |
 | Sleep delay ms | `20000` |
 | OTA Password | `habutton-ota` |
+| Debug MQTT logs (0/1) | `0` |
+| Long press ms | `800` |
+| Effect hold ms (min) | `500` |
+| Effect target mV | `2500` |
+
+Config remota pelo HA (switch debug, sleep delay, JSON): **[mqtt-config.md](mqtt-config.md)**.
 
 ### Reabrir o portal
 
@@ -57,7 +75,7 @@ O firmware publica **uma** entidade MQTT Event (`event.habutton_…_event`), nã
 
 ### Se ainda vir 2 botões sem atualizar
 
-1. Flash **1.3.1+** e acorde o device (gesto) — no serial deve aparecer `discovery schema=3` e `CLEAR …/btn_a/config`.
+1. Flash **1.3.1+** e acorde o device (gesto) — no serial deve aparecer `discovery schema=…` e `CLEAR …/btn_a/config`.
 2. Em **Dispositivos e serviços → MQTT → habutton**: remova entidades órfãs `btn_a` / `btn_b` se sobrarem.
 3. Confirme em **Ferramentas de desenvolvedor → Estados** a entidade `event.…` e o atributo `event_type` após um clique.
 4. No MQTT Explorer: tópico `habutton/<mac>/event` com `{"event_type":"press_a"}` (não retained).

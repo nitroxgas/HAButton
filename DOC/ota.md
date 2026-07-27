@@ -1,5 +1,7 @@
 # Atualização OTA (Over-The-Air)
 
+**Idioma:** [Português](ota.md) · [English](en/ota.md)
+
 O HAButton usa **ArduinoOTA** na rede Wi‑Fi local. O device só aceita upload enquanto está **acordado** (sessão após um clique). Em deep sleep o OTA não responde.
 
 ## Pré-requisitos
@@ -40,48 +42,46 @@ No portal WiFiManager (A+B+C ~10 s):
 
 ## Método 1 — PlatformIO (recomendado)
 
+O `pio run` **não** aceita `--upload-protocol` nem `--upload-flags` (só `--upload-port`).  
+O protocolo OTA está no env **`esp32-c3-ota`** do `platformio.ini`.
+
 ### Passo a passo
 
-1. Abra o projeto em `d:\Coding\HAButton`.
+1. Abra o projeto (ex.: `d:\Coding\HAButton`).
 2. Acorde o ESP (pressione um botão) e anote o IP no Serial (ou no roteador).
 3. No PC, rode **imediatamente** (ainda na janela idle):
 
 ```bash
 cd d:\Coding\HAButton
-pio run -t upload --upload-protocol espota --upload-port 192.168.1.103 --upload-flags "--auth=habutton-ota"
+pio run -e esp32-c3-ota -t upload --upload-port 192.168.1.103
 ```
 
-Substitua o IP e a senha pelos seus.
+Substitua o IP. A senha padrão do env é `habutton-ota`.
 
 Alternativa com hostname (se mDNS funcionar):
 
 ```bash
-pio run -t upload --upload-protocol espota --upload-port habutton-91c0.local --upload-flags "--auth=habutton-ota"
+pio run -e esp32-c3-ota -t upload --upload-port habutton-91c0.local
 ```
 
 4. No Serial do ESP deve aparecer `[ota] start`, progresso e `[ota] end`. O device reinicia com o novo firmware.
 
-### Configurar uma vez no `platformio.ini`
+### Senha OTA diferente
 
-Para não repetir flags, adicione (ajuste IP/senha):
+Edite em `platformio.ini` (env `esp32-c3-ota`):
 
 ```ini
-[env:esp32-c3-supermini]
-; ... demais opções existentes ...
-upload_protocol = espota
-upload_port = 192.168.1.103
 upload_flags =
-    --auth=habutton-ota
+    --auth=sua-senha
 ```
 
-Depois, com o device acordado:
+### Upload USB (padrão)
+
+O env `esp32-c3-supermini` continua com USB/`esptool`:
 
 ```bash
-pio run -t upload
+pio run -e esp32-c3-supermini -t upload --upload-port COM4
 ```
-
-> Para voltar ao upload USB, comente/remova `upload_protocol = espota` ou use  
-> `pio run -t upload --upload-protocol esptool --upload-port COM4`.
 
 ---
 
@@ -104,7 +104,7 @@ python %USERPROFILE%\.platformio\packages\framework-arduinoespressif32\tools\esp
 2. [ ] Aumentar sleep delay no portal se o upload for lento (opcional)
 3. [ ] Pressionar botão no HAButton (acordar)
 4. [ ] Confirmar no Serial: `[ota] pronto hostname=...` e IP
-5. [ ] Enviar OTA pelo PlatformIO / espota
+5. [ ] Enviar OTA: `pio run -e esp32-c3-ota -t upload --upload-port <IP>`
 6. [ ] Aguardar reboot; validar versão / comportamento
 
 Dica: mantenha um dedo no botão e clique de novo se o idle estiver perto de expirar **antes** de iniciar o upload (não clique no meio do transfer).
@@ -115,12 +115,13 @@ Dica: mantenha um dedo no botão e clique de novo se o idle estiver perto de exp
 
 | Sintoma | Causa provável | O que fazer |
 |---------|----------------|-------------|
+| `No such option: --upload-protocol` | Flag inválida no `pio run` | Use `-e esp32-c3-ota` (Método 1) |
 | `No response` / timeout | Device dormindo | Acordar com botão; aumentar sleep delay; repetir upload rápido |
-| `Authentication Failed` | Senha errada | Conferir **OTA Password** no portal (default `habutton-ota`) |
+| `Authentication Failed` | Senha errada | Conferir portal e `upload_flags` no ini |
 | Host não resolve (`.local`) | mDNS no Windows | Usar o **IP** numérico |
 | PC e ESP em redes diferentes | Wi‑Fi guest / VLAN | Mesmo SSID / mesma subnet |
 | Upload USB ok, OTA não | Partição sem OTA | Gravar USB com este projeto (`min_spiffs.csv`) |
-| OTA inicia e falha no meio | Idle expirou / Wi‑Fi fraco | Sleep delay maior; aproximar do AP; não dormir no meio |
+| OTA inicia e falha no meio | Idle expirou / Wi‑Fi fraco | Sleep delay maior; aproximar do AP |
 
 Códigos de erro ArduinoOTA no Serial (`[ota] error N`):
 
@@ -139,7 +140,7 @@ Códigos de erro ArduinoOTA no Serial (`[ota] error N`):
 OTA **não** substitui a primeira flash. Use cabo USB-C:
 
 ```bash
-pio run -t upload --upload-protocol esptool --upload-port COMx
+pio run -e esp32-c3-supermini -t upload --upload-port COMx
 ```
 
 Depois disso, as atualizações podem ser só por OTA.

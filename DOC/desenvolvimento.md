@@ -1,5 +1,7 @@
 # Desenvolvimento
 
+**Idioma:** [Português](desenvolvimento.md) · [English](en/development.md)
+
 ## Build / upload USB
 
 ```bash
@@ -15,11 +17,11 @@ Environment: `esp32-c3-supermini`. Partições: `min_spiffs.csv` (dual OTA).
 Instruções detalhadas (passo a passo, PlatformIO, troubleshooting): **[ota.md](ota.md)**.
 
 Resumo: acorde o device → mesma LAN →  
-`pio run -t upload --upload-protocol espota --upload-port <IP> --upload-flags "--auth=habutton-ota"`.
+`pio run -e esp32-c3-ota -t upload --upload-port <IP>`
 
 ## Firmware
 
-Versão: `FW_VERSION` em `include/config.h` (atual **1.3.0**).
+Versão: `FW_VERSION` em `include/config.h` (atual **1.4.2**).
 
 ## Troubleshooting
 
