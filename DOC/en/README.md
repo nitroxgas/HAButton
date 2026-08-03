@@ -43,3 +43,5 @@ Battery-powered device with buttons: wakes up, maintains session (20s idle), pub
 | [homeassistant-fallback-yaml.md](homeassistant-fallback-yaml.md) | YAML if discovery fails |
 | [development.md](development.md) | USB build overview |
 | [ota.md](ota.md) | Full OTA update guide |
+
+![Home Assistant](../pictures/HomeAssistant.png)

@@ -36,7 +36,8 @@ pio device monitor
 | Status LED | 8 |
 
 Firmware version: **1.4.2** (`include/config.h`)
-
+---
+![Home Assistant](/DOC/pictures/HomeAssistant.png)
 ---
 
 ## Português

@@ -47,3 +47,5 @@ Dispositivo com bateria e botões: acorda, mantém sessão (idle 20 s), publica 
 | [homeassistant-fallback-yaml.md](homeassistant-fallback-yaml.md) | YAML se discovery falhar |
 | [desenvolvimento.md](desenvolvimento.md) | Build USB e overview |
 | [ota.md](ota.md) | Guia completo de update OTA |
+
+![Home Assistant](../DOC/pictures/HomeAssistant.png)
