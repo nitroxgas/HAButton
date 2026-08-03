@@ -21,7 +21,7 @@ Resumo: acorde o device → mesma LAN →
 
 ## Firmware
 
-Versão: `FW_VERSION` em `include/config.h` (atual **1.4.2**).
+Versão: `FW_VERSION` em `include/config.h` (atual **1.4.5**).
 
 ## Troubleshooting
 

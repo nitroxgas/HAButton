@@ -48,23 +48,31 @@ void effectForceOff() {
   g_effectOn = false;
 }
 
-// Fluxo pedido: GPIO7 ON -> publish MQTT -> hold min -> GPIO7 OFF.
+// Fluxo: GPIO7 ON -> publish MQTT -> hold min -> GPIO7 OFF.
+// Com mirror LED→effect ativo, o GPIO7 só segue o LED azul.
 void publishWithEffect(AppConfig& cfg, const char* eventType) {
   if (eventType == nullptr || eventType[0] == '\0') {
     return;
   }
-  effectPulseOn();
+  const bool mirror = cfg.effectMirrorLedEnabled();
+  if (!mirror) {
+    effectPulseOn();
+  }
   mqttPublishGesture(cfg, eventType);
-  effectPulseOff(cfg);
+  if (!mirror) {
+    effectPulseOff(cfg);
+  }
 }
 
 void logBootPinStates() {
-  const int pins[] = {0, 2, 3, 4, 5, 8, 9};
+  // Não remapeia GPIO8 (LED): só lê sem mudar pinMode do status LED.
+  const int pins[] = {0, 2, 3, 4, 5, 9};
   Serial.print("[boot] niveis GPIO ");
   for (int pin : pins) {
     pinMode(pin, INPUT);
     Serial.printf("%d=%d ", pin, digitalRead(pin));
   }
+  Serial.printf("8(led)=%d ", digitalRead(STATUS_LED_PIN));
   Serial.println();
 }
 
@@ -92,7 +100,7 @@ void setup() {
   }
 
   delay(30);
-  statusLedOff();
+  // LED permanece aceso na inicialização até o Wi‑Fi assumir o modo (pisca/portal).
   Serial.println();
   Serial.printf("=== HAButton ESP32-C3 %s ===\n", FW_VERSION);
   Serial.printf("[main] wake=%s btn_down=%d\n", wokeByGpio ? "GPIO" : "outro",
@@ -131,7 +139,8 @@ void setup() {
     buttonsWaitReleaseAndReset();
   }
 
-  statusLedOn();
+  // Sessão idle: LED pisca lento; pulsos rápidos em publish MQTT.
+  statusLedSetMode(StatusLedMode::BlinkIdle);
   uint32_t idleDeadline = millis() + cfg.sleepDelayMsValue();
   Serial.printf("[main] sessao acordada idle=%u ms debug=%d\n",
                 cfg.sleepDelayMsValue(), cfg.debugMqttEnabled() ? 1 : 0);
@@ -139,6 +148,7 @@ void setup() {
   bool sleepWarned = false;
 
   while (millis() < idleDeadline) {
+    statusLedTick();
     otaHandle();
     mqttHandle(cfg);
 
@@ -168,6 +178,18 @@ void setup() {
       statusLedOff();
       delay(100);
       ESP.restart();
+    }
+
+    if (g.isRediscoverChord) {
+      Serial.println("[main] A+C 10s — republicando discovery/config MQTT");
+      statusLedOn();
+      const bool ok = mqttRepublishAll(cfg);
+      Serial.printf("[main] rediscover -> %s\n", ok ? "ok" : "FAIL");
+      buttonsWaitReleaseAndReset();
+      statusLedSetMode(StatusLedMode::BlinkIdle);
+      idleDeadline = millis() + cfg.sleepDelayMsValue();
+      sleepWarned = false;
+      continue;
     }
 
     // Proximos acionamentos na sessao: identifica no release, depois GPIO7+MQTT+OFF.

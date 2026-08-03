@@ -4,7 +4,8 @@
 
 struct GestureResult {
   bool hasEvent;
-  bool isConfigChord;
+  bool isConfigChord;       // A+B+C ~10 s → portal
+  bool isRediscoverChord;   // A+C ~10 s → republicar discovery/config MQTT
   bool pressStarted;  // true no instante em que um botao passa a ser pressionado
   const char* eventType;
 };
@@ -27,7 +28,7 @@ void buttonsWaitReleaseAndReset();
 // Ajusta limiar de long press em runtime (portal / MQTT).
 void buttonsSetLongPressMs(uint32_t ms);
 
-// Poll nao bloqueante. Completa gesto no release (ou config chord A+B+C).
+// Poll nao bloqueante. Completa gesto no release, portal (A+B+C) ou rediscover (A+C).
 GestureResult buttonsPollGesture();
 
 void enterDeepSleep();

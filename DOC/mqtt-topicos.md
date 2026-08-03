@@ -5,7 +5,7 @@
 
 Base: `{device_name}/{mac12}` — ex. `habutton/983dae4191c0`  
 Discovery event: `homeassistant/event/{device_name}_{mac12}/config`  
-Schema discovery: **7** (rollback do schema 6 — contrato clássico compatível com HA).
+Schema discovery: **10** (clássico + birth `homeassistant/status` para republicar após restart do HA).
 
 ---
 
@@ -18,6 +18,7 @@ Schema discovery: **7** (rollback do schema 6 — contrato clássico compatível
 | `{base}/config` | → | sim | JSON snapshot | Snapshot |
 | `{base}/config/set` | ← | não | JSON | Batch config |
 | `{base}/debug` `/set` | ↔ | estado sim | `ON` / `OFF` | Debug |
+| `{base}/effect_mirror` `/set` | ↔ | estado sim | `ON` / `OFF` | Espelho LED→GPIO7 |
 | `{base}/sleep_delay` `/set` | ↔ | estado sim | ms | Sleep idle |
 | `{base}/long_press` `/set` | ↔ | estado sim | ms | Long press |
 | `{base}/effect_hold` `/set` | ↔ | estado sim | ms | Effect hold |
@@ -27,7 +28,8 @@ Schema discovery: **7** (rollback do schema 6 — contrato clássico compatível
 | `{base}/ota_pass` `/set` | ↔ | estado `*` | texto | OTA password |
 | `{base}/mqtt_host` `/port` `/user` `/pass` `/prefix` + `/set` | ↔ | estado sim | MQTT | Broker |
 
-Subscribe no ESP: `{base}/+/set` (só enquanto acordado).
+Subscribe no ESP: `{base}/+/set` + `homeassistant/status` (birth do HA → rediscover).  
+Só enquanto acordado.
 
 ### Gestos em `{base}/event`
 

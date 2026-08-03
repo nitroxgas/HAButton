@@ -18,12 +18,14 @@ struct AppConfig {
   String longPressMs;
   String effectHoldMs;
   String effectTargetMv;
+  String effectMirrorLed;  // "0" / "1" — espelha LED azul no GPIO7
 
   uint32_t sleepDelayMsValue() const;
   bool debugMqttEnabled() const;
   uint32_t longPressMsValue() const;
   uint32_t effectHoldMsValue() const;
   uint16_t effectTargetMvValue() const;
+  bool effectMirrorLedEnabled() const;
 };
 
 bool wifiSetupAndConnect(AppConfig& cfg);

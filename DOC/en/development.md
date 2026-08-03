@@ -21,7 +21,7 @@ Summary: wake the device → same LAN →
 
 ## Firmware
 
-Version: `FW_VERSION` in `include/config.h` (current **1.4.2**).
+Version: `FW_VERSION` in `include/config.h` (current **1.4.5**).
 
 ## Troubleshooting
 

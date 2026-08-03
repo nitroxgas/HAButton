@@ -2,6 +2,7 @@
 #include "buttons.h"
 #include "config.h"
 #include "effect_out.h"
+#include "status_led.h"
 
 #include <ArduinoJson.h>
 #include <Preferences.h>
@@ -23,6 +24,7 @@ AppConfig* g_cfgPtr = nullptr;
 bool g_configDirty = false;
 bool g_subscribed = false;
 bool g_needMqttReconnect = false;
+bool g_needHaBirthRediscover = false;
 
 const char* kEventTypes[] = {
     "press_a",  "press_b",  "press_c",  "long_a",   "long_b",   "long_c",
@@ -70,6 +72,8 @@ String tEh(const AppConfig& c) { return baseTopic(c) + "/effect_hold"; }
 String tEhSet(const AppConfig& c) { return baseTopic(c) + "/effect_hold/set"; }
 String tEmv(const AppConfig& c) { return baseTopic(c) + "/effect_mv"; }
 String tEmvSet(const AppConfig& c) { return baseTopic(c) + "/effect_mv/set"; }
+String tMirror(const AppConfig& c) { return baseTopic(c) + "/effect_mirror"; }
+String tMirrorSet(const AppConfig& c) { return baseTopic(c) + "/effect_mirror/set"; }
 String tBa(const AppConfig& c) { return baseTopic(c) + "/btn_a_name"; }
 String tBaSet(const AppConfig& c) { return baseTopic(c) + "/btn_a_name/set"; }
 String tBb(const AppConfig& c) { return baseTopic(c) + "/btn_b_name"; }
@@ -108,13 +112,16 @@ const char* wakeCauseLabel() {
   }
 }
 
-bool publishRetained(const String& topic, const char* payload, size_t len) {
+bool publishRetained(const String& topic, const char* payload, size_t len, bool pulseLed) {
+  if (pulseLed) {
+    statusLedPulseMqtt();
+  }
   const bool ok =
       mqtt.publish(topic.c_str(), reinterpret_cast<const uint8_t*>(payload), len, true);
   Serial.printf("[mqtt] RETAIN %s (%u B) -> %s\n", topic.c_str(),
                 static_cast<unsigned>(len), ok ? "ok" : "FAIL");
   mqtt.loop();
-  delay(30);
+  delay(50);
   return ok;
 }
 
@@ -122,7 +129,7 @@ bool publishEmptyRetained(const String& topic) {
   const bool ok = mqtt.publish(topic.c_str(), reinterpret_cast<const uint8_t*>(""), 0, true);
   Serial.printf("[mqtt] CLEAR %s -> %s\n", topic.c_str(), ok ? "ok" : "FAIL");
   mqtt.loop();
-  delay(15);
+  delay(25);
   return ok;
 }
 
@@ -166,16 +173,21 @@ void markDiscoveryDone(uint8_t ver) {
 }
 
 void fillDeviceObject(JsonObject device, const AppConfig& cfg) {
-  device["identifiers"][0] = deviceId(cfg);
+  // Copia strings para o pool do JsonDocument (evita dangling de temporários).
+  const String id = deviceId(cfg);
+  const String mac = macColon();
+  device["identifiers"][0] = id;
   device["connections"][0][0] = "mac";
-  device["connections"][0][1] = macColon();
+  device["connections"][0][1] = mac;
   device["name"] = cfg.deviceName;
   device["model"] = "ESP32-C3 Super Mini";
   device["manufacturer"] = "HAButton";
   device["sw_version"] = FW_VERSION;
   const String ip = WiFi.localIP().toString();
   if (ip.length() > 0 && ip != "0.0.0.0") {
-    device["configuration_url"] = String("http://") + ip;
+    char cu[40];
+    snprintf(cu, sizeof(cu), "http://%s", ip.c_str());
+    device["configuration_url"] = cu;
     device["connections"][1][0] = "ip";
     device["connections"][1][1] = ip;
   }
@@ -226,7 +238,7 @@ void clearLegacyDiscovery(const AppConfig& cfg) {
 
 bool publishComponentDiscovery(const char* component, const String& objectId,
                                JsonDocument& doc) {
-  char payload[1536];
+  char payload[2048];
   const size_t n = serializeJson(doc, payload, sizeof(payload));
   if (n == 0 || n >= sizeof(payload)) {
     Serial.printf("[mqtt] discovery overflow %s/%s\n", component, objectId.c_str());
@@ -234,7 +246,7 @@ bool publishComponentDiscovery(const char* component, const String& objectId,
   }
   const String topic =
       String(kHaDiscoveryPrefix) + "/" + component + "/" + objectId + "/config";
-  return publishRetained(topic, payload, n);
+  return publishRetained(topic, payload, n, false);
 }
 
 bool publishEventDiscovery(const AppConfig& cfg) {
@@ -254,15 +266,15 @@ bool publishEventDiscovery(const AppConfig& cfg) {
   origin["sw"] = FW_VERSION;
   fillDeviceObject(doc["device"].to<JsonObject>(), cfg);
 
-  char payload[1280];
+  char payload[2048];
   const size_t n = serializeJson(doc, payload, sizeof(payload));
   if (n == 0 || n >= sizeof(payload)) {
     Serial.println("[mqtt] event discovery overflow");
     return false;
   }
-  Serial.printf("[mqtt] discovery payload=%s\n", payload);
+  Serial.printf("[mqtt] discovery event %u B\n", static_cast<unsigned>(n));
   const String topic = eventDiscoveryTopic(cfg);
-  if (!publishRetained(topic, payload, n)) {
+  if (!publishRetained(topic, payload, n, false)) {
     return false;
   }
   return verifyRetained(topic);
@@ -270,7 +282,8 @@ bool publishEventDiscovery(const AppConfig& cfg) {
 
 bool publishSwitchDiscovery(const AppConfig& cfg, const char* name, const String& uniq,
                             const String& stat, const String& cmd, const char* on,
-                            const char* off) {
+                            const char* off, bool configCategory = true,
+                            const char* icon = nullptr) {
   JsonDocument doc;
   doc["name"] = name;
   doc["unique_id"] = uniq;
@@ -278,7 +291,12 @@ bool publishSwitchDiscovery(const AppConfig& cfg, const char* name, const String
   doc["command_topic"] = cmd;
   doc["payload_on"] = on;
   doc["payload_off"] = off;
-  doc["entity_category"] = "config";
+  if (configCategory) {
+    doc["entity_category"] = "config";
+  }
+  if (icon != nullptr && icon[0] != '\0') {
+    doc["icon"] = icon;
+  }
   fillDeviceObject(doc["device"].to<JsonObject>(), cfg);
   return publishComponentDiscovery("switch", uniq, doc);
 }
@@ -314,7 +332,13 @@ bool publishTextDiscovery(const AppConfig& cfg, const char* name, const String& 
 }
 
 bool publishDiscovery(const AppConfig& cfg) {
-  clearLegacyDiscovery(cfg);
+  // Limpeza agressiva só na migração de schemas antigos (evita flood no broker).
+  const uint8_t prev = storedDiscoveryVersion();
+  if (prev < 7) {
+    clearLegacyDiscovery(cfg);
+  } else if (prev < 10) {
+    clearBrokenCompactDiscovery(cfg);
+  }
 
   if (!publishEventDiscovery(cfg)) {
     Serial.println("[mqtt] discovery event VERIFY fail (ACL homeassistant/#?)");
@@ -322,27 +346,39 @@ bool publishDiscovery(const AppConfig& cfg) {
   }
 
   const String id = deviceId(cfg);
-  publishSwitchDiscovery(cfg, "Debug", id + "_debug", tDbg(cfg), tDbgSet(cfg), "ON", "OFF");
-  publishNumberDiscovery(cfg, "Sleep delay", id + "_sleep_delay", tSlp(cfg), tSlpSet(cfg),
-                         SLEEP_DELAY_MIN_MS, SLEEP_DELAY_MAX_MS, 1000, "ms");
-  publishNumberDiscovery(cfg, "Long press", id + "_long_press", tLp(cfg), tLpSet(cfg), 200,
-                         10000, 50, "ms");
-  publishNumberDiscovery(cfg, "Effect hold", id + "_effect_hold", tEh(cfg), tEhSet(cfg), 0,
-                         10000, 50, "ms");
-  publishNumberDiscovery(cfg, "Effect mV", id + "_effect_mv", tEmv(cfg), tEmvSet(cfg), 100,
-                         EFFECT_SUPPLY_MV, 50, "mV");
-  publishTextDiscovery(cfg, "Btn A name", id + "_btn_a_name", tBa(cfg), tBaSet(cfg));
-  publishTextDiscovery(cfg, "Btn B name", id + "_btn_b_name", tBb(cfg), tBbSet(cfg));
-  publishTextDiscovery(cfg, "Btn C name", id + "_btn_c_name", tBc(cfg), tBcSet(cfg));
-  publishTextDiscovery(cfg, "Device name", id + "_device_name", tDn(cfg), tDnSet(cfg));
-  publishTextDiscovery(cfg, "OTA password", id + "_ota_pass", tOta(cfg), tOtaSet(cfg));
-  publishTextDiscovery(cfg, "MQTT host", id + "_mqtt_host", tMh(cfg), tMhSet(cfg));
-  publishTextDiscovery(cfg, "MQTT port", id + "_mqtt_port", tMp(cfg), tMpSet(cfg));
-  publishTextDiscovery(cfg, "MQTT user", id + "_mqtt_user", tMu(cfg), tMuSet(cfg));
-  publishTextDiscovery(cfg, "MQTT password", id + "_mqtt_pass", tMw(cfg), tMwSet(cfg));
-  publishTextDiscovery(cfg, "HA prefix", id + "_mqtt_prefix", tPx(cfg), tPxSet(cfg));
+  bool ok = true;
+  ok &= publishSwitchDiscovery(cfg, "Debug", id + "_debug", tDbg(cfg), tDbgSet(cfg), "ON",
+                               "OFF");
+  ok &= publishSwitchDiscovery(cfg, "Espelho LED no efeito", id + "_effect_mirror",
+                               tMirror(cfg), tMirrorSet(cfg), "ON", "OFF", false, "mdi:led-on");
+  ok &= publishNumberDiscovery(cfg, "Sleep delay", id + "_sleep_delay", tSlp(cfg),
+                               tSlpSet(cfg), SLEEP_DELAY_MIN_MS, SLEEP_DELAY_MAX_MS, 1000,
+                               "ms");
+  ok &= publishNumberDiscovery(cfg, "Long press", id + "_long_press", tLp(cfg), tLpSet(cfg),
+                               200, 10000, 50, "ms");
+  ok &= publishNumberDiscovery(cfg, "Effect hold", id + "_effect_hold", tEh(cfg), tEhSet(cfg),
+                               0, 10000, 50, "ms");
+  ok &= publishNumberDiscovery(cfg, "Effect mV", id + "_effect_mv", tEmv(cfg), tEmvSet(cfg),
+                               100, EFFECT_SUPPLY_MV, 50, "mV");
+  ok &= publishTextDiscovery(cfg, "Btn A name", id + "_btn_a_name", tBa(cfg), tBaSet(cfg));
+  ok &= publishTextDiscovery(cfg, "Btn B name", id + "_btn_b_name", tBb(cfg), tBbSet(cfg));
+  ok &= publishTextDiscovery(cfg, "Btn C name", id + "_btn_c_name", tBc(cfg), tBcSet(cfg));
+  ok &= publishTextDiscovery(cfg, "Device name", id + "_device_name", tDn(cfg), tDnSet(cfg));
+  ok &= publishTextDiscovery(cfg, "OTA password", id + "_ota_pass", tOta(cfg), tOtaSet(cfg));
+  ok &= publishTextDiscovery(cfg, "MQTT host", id + "_mqtt_host", tMh(cfg), tMhSet(cfg));
+  ok &= publishTextDiscovery(cfg, "MQTT port", id + "_mqtt_port", tMp(cfg), tMpSet(cfg));
+  ok &= publishTextDiscovery(cfg, "MQTT user", id + "_mqtt_user", tMu(cfg), tMuSet(cfg));
+  ok &= publishTextDiscovery(cfg, "MQTT password", id + "_mqtt_pass", tMw(cfg), tMwSet(cfg));
+  ok &= publishTextDiscovery(cfg, "HA prefix", id + "_mqtt_prefix", tPx(cfg), tPxSet(cfg));
+
+  if (!ok) {
+    Serial.println("[mqtt] discovery parcial FAIL — nao marca disc_ver (retry no prox wake)");
+    return false;
+  }
 
   markDiscoveryDone(DISCOVERY_SCHEMA_VERSION);
+  Serial.printf("[mqtt] discovery schema=%u OK\n",
+                static_cast<unsigned>(DISCOVERY_SCHEMA_VERSION));
   return true;
 }
 
@@ -351,30 +387,38 @@ bool discoveryNeedsPublish() {
 }
 
 void pubStr(const String& topic, const String& val) {
-  mqtt.publish(topic.c_str(), val.c_str(), true);
+  const bool ok = mqtt.publish(topic.c_str(), val.c_str(), true);
+  if (!ok) {
+    Serial.printf("[mqtt] STATE FAIL %s\n", topic.c_str());
+  }
+  mqtt.loop();
+  delay(20);
 }
 
 void pubU32(const String& topic, uint32_t v) {
   char b[12];
   snprintf(b, sizeof(b), "%u", v);
-  mqtt.publish(topic.c_str(), b, true);
+  pubStr(topic, String(b));
 }
 
 void publishConfigSnapshot(const AppConfig& cfg) {
   JsonDocument doc;
   doc["debug"] = cfg.debugMqttEnabled();
+  doc["effect_mirror_led"] = cfg.effectMirrorLedEnabled();
   doc["sleep_delay_ms"] = cfg.sleepDelayMsValue();
   doc["long_press_ms"] = cfg.longPressMsValue();
   doc["effect_hold_ms"] = cfg.effectHoldMsValue();
   doc["effect_target_mv"] = cfg.effectTargetMvValue();
   doc["fw"] = FW_VERSION;
-  char payload[220];
+  char payload[256];
   const size_t n = serializeJson(doc, payload, sizeof(payload));
   if (n > 0 && n < sizeof(payload)) {
-    publishRetained(tCfg(cfg), payload, n);
+    publishRetained(tCfg(cfg), payload, n, false);
   }
 
+  // Estados retained — necessários para o HA não ficar "unavailable" após restart.
   pubStr(tDbg(cfg), cfg.debugMqttEnabled() ? "ON" : "OFF");
+  pubStr(tMirror(cfg), cfg.effectMirrorLedEnabled() ? "ON" : "OFF");
   pubU32(tSlp(cfg), cfg.sleepDelayMsValue());
   pubU32(tLp(cfg), cfg.longPressMsValue());
   pubU32(tEh(cfg), cfg.effectHoldMsValue());
@@ -413,6 +457,14 @@ bool applyConfigJson(AppConfig& cfg, const char* json, size_t len) {
     const String next =
         (v == "1" || v.equalsIgnoreCase("true") || v.equalsIgnoreCase("ON")) ? "1" : "0";
     changed |= setIfChanged(cfg.debugMqtt, next);
+  }
+  if (!doc["effect_mirror_led"].isNull() || !doc["effect_mirror"].isNull()) {
+    String v = !doc["effect_mirror_led"].isNull() ? doc["effect_mirror_led"].as<String>()
+                                                  : doc["effect_mirror"].as<String>();
+    v.trim();
+    const String next =
+        (v == "1" || v.equalsIgnoreCase("true") || v.equalsIgnoreCase("ON")) ? "1" : "0";
+    changed |= setIfChanged(cfg.effectMirrorLed, next);
   }
 
   auto take = [&](const char* key, String& field) {
@@ -466,6 +518,10 @@ bool applyScalarSet(AppConfig& cfg, const String& key, const char* val) {
     const String next =
         (v == "1" || v.equalsIgnoreCase("ON") || v.equalsIgnoreCase("true")) ? "1" : "0";
     changed = setIfChanged(cfg.debugMqtt, next);
+  } else if (key == "effect_mirror") {
+    const String next =
+        (v == "1" || v.equalsIgnoreCase("ON") || v.equalsIgnoreCase("true")) ? "1" : "0";
+    changed = setIfChanged(cfg.effectMirrorLed, next);
   } else if (key == "sleep_delay") {
     changed = setIfChanged(cfg.sleepDelayMs, v);
   } else if (key == "long_press") {
@@ -510,6 +566,18 @@ bool applyScalarSet(AppConfig& cfg, const String& key, const char* val) {
   return true;
 }
 
+bool isHaStatusTopic(const AppConfig& cfg, const String& t) {
+  if (t == "homeassistant/status") {
+    return true;
+  }
+  String custom = cfg.mqttPrefix;
+  custom.trim();
+  if (custom.length() > 0) {
+    return t == (custom + "/status");
+  }
+  return false;
+}
+
 void handleIncoming(char* topic, byte* payload, unsigned int length) {
   if (g_echoTopic.length() > 0 && g_echoTopic.equals(topic) && length > 0) {
     g_echoOk = true;
@@ -526,8 +594,18 @@ void handleIncoming(char* topic, byte* payload, unsigned int length) {
   buf[length] = '\0';
 
   AppConfig& cfg = *g_cfgPtr;
-  const String base = baseTopic(cfg) + "/";
   String t(topic);
+
+  // Birth message do HA: republica discovery+estados (entidades voltam após restart HA).
+  if (isHaStatusTopic(cfg, t)) {
+    if (strcasecmp(buf, "online") == 0) {
+      g_needHaBirthRediscover = true;
+      Serial.println("[mqtt] HA status=online — agendando rediscover");
+    }
+    return;
+  }
+
+  const String base = baseTopic(cfg) + "/";
   if (!t.startsWith(base) || !t.endsWith("/set")) {
     return;
   }
@@ -545,9 +623,15 @@ void mqttCallback(char* topic, byte* payload, unsigned int length) {
 void subscribeConfigTopics(const AppConfig& cfg) {
   const String sub = baseTopic(cfg) + "/+/set";
   mqtt.subscribe(sub.c_str(), 0);
+  mqtt.subscribe("homeassistant/status", 0);
+  String custom = cfg.mqttPrefix;
+  custom.trim();
+  if (custom.length() > 0 && custom != kHaDiscoveryPrefix) {
+    mqtt.subscribe((custom + "/status").c_str(), 0);
+  }
   g_subscribed = true;
   mqtt.loop();
-  Serial.printf("[mqtt] sub %s\n", sub.c_str());
+  Serial.printf("[mqtt] sub %s + homeassistant/status\n", sub.c_str());
 }
 
 }  // namespace
@@ -557,6 +641,25 @@ void mqttPublishConfigState(const AppConfig& cfg) {
     return;
   }
   publishConfigSnapshot(cfg);
+}
+
+bool mqttRepublishAll(AppConfig& cfg) {
+  if (!mqttEnsureConnected(cfg)) {
+    Serial.println("[mqtt] rediscover abortado — sem conexao");
+    return false;
+  }
+  Serial.printf("[mqtt] rediscover forçado (schema=%u)\n",
+                static_cast<unsigned>(DISCOVERY_SCHEMA_VERSION));
+  // Força republicação mesmo se disc_ver já estiver atual.
+  Preferences prefs;
+  if (prefs.begin(NVS_NAMESPACE, false)) {
+    prefs.putUChar("disc_ver", 0);
+    prefs.end();
+  }
+  const bool discOk = publishDiscovery(cfg);
+  publishConfigSnapshot(cfg);
+  mqttPublishLog(cfg, "rediscover", discOk ? "ok" : "discovery_fail");
+  return discOk;
 }
 
 void mqttPublishLog(AppConfig& cfg, const char* event, const char* detail) {
@@ -603,8 +706,8 @@ bool mqttEnsureConnected(AppConfig& cfg) {
 
   const int port = cfg.mqttPort.toInt() > 0 ? cfg.mqttPort.toInt() : 1883;
   mqtt.setServer(cfg.mqttHost.c_str(), port);
-  mqtt.setBufferSize(4096);
-  mqtt.setKeepAlive(30);
+  mqtt.setBufferSize(8192);
+  mqtt.setKeepAlive(60);
   mqtt.setCallback(mqttCallback);
 
   const String clientId = deviceId(cfg);
@@ -630,13 +733,16 @@ bool mqttEnsureConnected(AppConfig& cfg) {
     return false;
   }
 
+  subscribeConfigTopics(cfg);
+
   if (discoveryNeedsPublish()) {
     Serial.printf("[mqtt] discovery schema=%u — republicando\n",
                   static_cast<unsigned>(DISCOVERY_SCHEMA_VERSION));
-    publishDiscovery(cfg);
+    if (!publishDiscovery(cfg)) {
+      Serial.println("[mqtt] discovery falhou — estados ainda serao publicados");
+    }
   }
 
-  subscribeConfigTopics(cfg);
   publishConfigSnapshot(cfg);
   return true;
 }
@@ -652,6 +758,17 @@ void mqttHandle(AppConfig& cfg) {
   }
   if (g_needMqttReconnect) {
     mqttEnsureConnected(cfg);
+  }
+  if (g_needHaBirthRediscover) {
+    g_needHaBirthRediscover = false;
+    Serial.println("[mqtt] processando rediscover por birth HA");
+    Preferences prefs;
+    if (prefs.begin(NVS_NAMESPACE, false)) {
+      prefs.putUChar("disc_ver", 0);
+      prefs.end();
+    }
+    publishDiscovery(cfg);
+    publishConfigSnapshot(cfg);
   }
   if (g_configDirty) {
     g_configDirty = false;
@@ -676,6 +793,7 @@ bool mqttPublishGesture(AppConfig& cfg, const char* eventType) {
     return false;
   }
 
+  statusLedPulseMqtt();
   const String topic = tEvent(cfg);
   const bool ok = mqtt.publish(topic.c_str(), payload, false);
   Serial.printf("[mqtt] EVENT %s %s -> %s\n", topic.c_str(), payload, ok ? "ok" : "FAIL");

@@ -117,6 +117,7 @@ GestureResult buttonsPollGesture() {
   GestureResult out{};
   out.hasEvent = false;
   out.isConfigChord = false;
+  out.isRediscoverChord = false;
   out.pressStarted = false;
   out.eventType = nullptr;
 
@@ -153,17 +154,17 @@ GestureResult buttonsPollGesture() {
     return out;
   }
 
-  if (held >= g_longPressMs) {
-    g_longMarked = true;
+  // A+C (sem B) ~10 s → republicar discovery + estados de config no MQTT
+  if (g_latched == 0x05 && held >= CONFIG_CHORD_HOLD_MS) {
+    statusLedOn();
+    Serial.println("[buttons] A+C 10s — rediscover MQTT");
+    out.isRediscoverChord = true;
+    g_phase = Phase::Idle;
+    return out;
   }
 
-  // Feedback visual em long / config
-  if (g_latched == 0x07 && held > g_longPressMs) {
-    if ((held / 250) % 2 == 0) {
-      statusLedOn();
-    } else {
-      statusLedOff();
-    }
+  if (held >= g_longPressMs) {
+    g_longMarked = true;
   }
 
   if (now != 0) {
@@ -173,7 +174,6 @@ GestureResult buttonsPollGesture() {
   // Release — emitir gesto
   const char* ev = mapEvent(g_latched, g_longMarked);
   g_phase = Phase::Idle;
-  statusLedOff();
 
   if (ev == nullptr) {
     return out;

@@ -161,6 +161,10 @@
 #define DEFAULT_EFFECT_TARGET_MV "2500"
 #endif
 
+#ifndef DEFAULT_EFFECT_MIRROR_LED
+#define DEFAULT_EFFECT_MIRROR_LED "0"
+#endif
+
 #ifndef MQTT_CONNECT_TIMEOUT_MS
 #define MQTT_CONNECT_TIMEOUT_MS 8000
 #endif
@@ -170,11 +174,11 @@
 #endif
 
 #ifndef FW_VERSION
-#define FW_VERSION "1.4.2"
+#define FW_VERSION "1.4.5"
 #endif
 
 // Incrementar ao mudar o schema de discovery MQTT (força limpeza + republicação).
-// 7 = rollback do schema 6 (device discovery + payloads curtos) → contrato clássico.
+// 10 = rediscovery confiável + birth HA (homeassistant/status).
 #ifndef DISCOVERY_SCHEMA_VERSION
-#define DISCOVERY_SCHEMA_VERSION 7
+#define DISCOVERY_SCHEMA_VERSION 10
 #endif

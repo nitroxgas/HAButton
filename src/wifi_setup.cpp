@@ -29,6 +29,7 @@ void applyDefaults(AppConfig& cfg) {
   cfg.longPressMs = DEFAULT_LONG_PRESS_MS;
   cfg.effectHoldMs = DEFAULT_EFFECT_HOLD_MS;
   cfg.effectTargetMv = DEFAULT_EFFECT_TARGET_MV;
+  cfg.effectMirrorLed = DEFAULT_EFFECT_MIRROR_LED;
 }
 
 void normalizeConfig(AppConfig& cfg) {
@@ -61,6 +62,13 @@ void normalizeConfig(AppConfig& cfg) {
   if (cfg.effectTargetMv.isEmpty()) {
     cfg.effectTargetMv = DEFAULT_EFFECT_TARGET_MV;
   }
+  cfg.effectMirrorLed.trim();
+  if (cfg.effectMirrorLed != "1" && cfg.effectMirrorLed != "true" &&
+      cfg.effectMirrorLed != "ON") {
+    cfg.effectMirrorLed = "0";
+  } else {
+    cfg.effectMirrorLed = "1";
+  }
 }
 
 void loadFromNvs(AppConfig& cfg) {
@@ -84,6 +92,7 @@ void loadFromNvs(AppConfig& cfg) {
   cfg.longPressMs = prefs.getString("long_press", cfg.longPressMs);
   cfg.effectHoldMs = prefs.getString("effect_hold", cfg.effectHoldMs);
   cfg.effectTargetMv = prefs.getString("effect_mv", cfg.effectTargetMv);
+  cfg.effectMirrorLed = prefs.getString("effect_mirror", cfg.effectMirrorLed);
   prefs.end();
   normalizeConfig(cfg);
 }
@@ -96,7 +105,8 @@ bool configChanged(const AppConfig& before, const AppConfig& after) {
          before.btnCName != after.btnCName || before.sleepDelayMs != after.sleepDelayMs ||
          before.otaPass != after.otaPass || before.debugMqtt != after.debugMqtt ||
          before.longPressMs != after.longPressMs || before.effectHoldMs != after.effectHoldMs ||
-         before.effectTargetMv != after.effectTargetMv;
+         before.effectTargetMv != after.effectTargetMv ||
+         before.effectMirrorLed != after.effectMirrorLed;
 }
 
 void saveToNvs(const AppConfig& cfgIn, bool bumpDiscovery) {
@@ -121,6 +131,7 @@ void saveToNvs(const AppConfig& cfgIn, bool bumpDiscovery) {
   prefs.putString("long_press", cfg.longPressMs);
   prefs.putString("effect_hold", cfg.effectHoldMs);
   prefs.putString("effect_mv", cfg.effectTargetMv);
+  prefs.putString("effect_mirror", cfg.effectMirrorLed);
   if (bumpDiscovery) {
     prefs.putBool("disc_done", false);
     prefs.putUChar("disc_ver", 0);
@@ -198,6 +209,10 @@ uint16_t AppConfig::effectTargetMvValue() const {
   return static_cast<uint16_t>(v);
 }
 
+bool AppConfig::effectMirrorLedEnabled() const {
+  return effectMirrorLed == "1";
+}
+
 void wifiLoadConfig(AppConfig& cfg) {
   loadFromNvs(cfg);
 }
@@ -209,6 +224,7 @@ void wifiSaveConfig(const AppConfig& cfg) {
 void wifiApplyRuntimeTuning(const AppConfig& cfg) {
   buttonsSetLongPressMs(cfg.longPressMsValue());
   effectOutSetTargetMv(cfg.effectTargetMvValue());
+  effectOutSetMirrorLed(cfg.effectMirrorLedEnabled());
 }
 
 void wifiRequestConfigPortalOnNextBoot() {
@@ -253,6 +269,7 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   char longPress[8];
   char effectHold[8];
   char effectMv[8];
+  char effectMirror[4];
 
   auto copyField = [](char* dst, size_t n, const String& src) {
     strncpy(dst, src.c_str(), n - 1);
@@ -274,6 +291,7 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   copyField(longPress, sizeof(longPress), cfg.longPressMs);
   copyField(effectHold, sizeof(effectHold), cfg.effectHoldMs);
   copyField(effectMv, sizeof(effectMv), cfg.effectTargetMv);
+  copyField(effectMirror, sizeof(effectMirror), cfg.effectMirrorLed);
 
   WiFiManagerParameter pHost("mqtt_host", "MQTT Host", mqttHost, sizeof(mqttHost));
   WiFiManagerParameter pPort("mqtt_port", "MQTT Port", mqttPort, sizeof(mqttPort));
@@ -291,6 +309,8 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   WiFiManagerParameter pLong("long_press", "Long press ms", longPress, sizeof(longPress));
   WiFiManagerParameter pHold("effect_hold", "Effect hold ms (min)", effectHold, sizeof(effectHold));
   WiFiManagerParameter pMv("effect_mv", "Effect target mV", effectMv, sizeof(effectMv));
+  WiFiManagerParameter pMirror("effect_mirror", "Mirror LED to effect (0/1)", effectMirror,
+                               sizeof(effectMirror));
 
   wm.addParameter(&pHost);
   wm.addParameter(&pPort);
@@ -307,16 +327,24 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   wm.addParameter(&pLong);
   wm.addParameter(&pHold);
   wm.addParameter(&pMv);
+  wm.addParameter(&pMirror);
 
   const String apName = makeApName();
   bool ok = false;
 
+  // Portal (AP) → LED fixo; tentativa de STA → pisca 1 s.
+  wm.setAPCallback([](WiFiManager*) {
+    statusLedSetMode(StatusLedMode::On);
+    Serial.println("[wifi] portal ativo — LED fixo");
+  });
+
   if (forcePortal) {
-    statusLedOn();
+    statusLedSetMode(StatusLedMode::On);
     Serial.printf("[wifi] portal forçado AP=%s (timeout %ds)\n",
                   apName.c_str(), WIFI_PORTAL_FORCED_TIMEOUT_S);
     ok = wm.startConfigPortal(apName.c_str());
   } else {
+    statusLedSetMode(StatusLedMode::BlinkWifi);
     Serial.printf("[wifi] tentando conectar / portal AP=%s\n", apName.c_str());
     ok = wm.autoConnect(apName.c_str());
   }
@@ -336,6 +364,7 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
   cfg.longPressMs = pLong.getValue();
   cfg.effectHoldMs = pHold.getValue();
   cfg.effectTargetMv = pMv.getValue();
+  cfg.effectMirrorLed = pMirror.getValue();
   normalizeConfig(cfg);
 
   if (forcePortal || configChanged(cfgBefore, cfg)) {
@@ -354,6 +383,7 @@ bool wifiSetupAndConnect(AppConfig& cfg) {
     return false;
   }
 
+  statusLedOff();
   Serial.printf("[wifi] conectado SSID=%s IP=%s sleep=%u debug=%s\n",
                 WiFi.SSID().c_str(),
                 WiFi.localIP().toString().c_str(),
